@@ -1,0 +1,106 @@
+﻿@page "/"
+
+<PageTitle>YouTube Catalog</PageTitle>
+
+<div class="home-container">
+    <h1>Welcome to YouTube Catalog</h1>
+    <p class="lead">Discover the top trending videos from your favorite YouTube channels</p>
+
+    <section class="features">
+        <h2>Features</h2>
+        <ul>
+            <li>
+                <strong>Multi-Channel Search</strong> - Enter multiple YouTube channels and fetch the top videos across all of them
+            </li>
+            <li>
+                <strong>Customizable Results</strong> - Choose how many videos to display (top X) and the time period (past Y days)
+            </li>
+            <li>
+                <strong>Fast Results</strong> - Results are cached to provide quick responses for repeated queries
+            </li>
+            <li>
+                <strong>Channel Discovery</strong> - Search for channels by name to easily find and add them
+            </li>
+        </ul>
+    </section>
+
+    <section class="getting-started">
+        <h2>Getting Started</h2>
+        <ol>
+            <li>Navigate to the <NavLink href="catalog">Catalog page</NavLink></li>
+            <li>Add your favorite YouTube channels (by ID or URL, or search by name)</li>
+            <li>Set how many videos you want to see and the time period</li>
+            <li>Click "Fetch Results" to see the top videos</li>
+        </ol>
+    </section>
+
+    <section class="about">
+        <h2>How It Works</h2>
+        <p>
+            The YouTube Catalog application fetches video metadata from your selected channels, 
+            filters them by publication date, sorts by view count, and displays the results in an easy-to-browse format.
+        </p>
+        <p>
+            Results are cached to improve performance, and you can fetch updated results at any time.
+        </p>
+    </section>
+</div>
+
+<style>
+    .home-container {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 2rem 1rem;
+    }
+
+    h1 {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+        color: #333;
+    }
+
+    .lead {
+        font-size: 1.2rem;
+        color: #666;
+        margin-bottom: 2rem;
+    }
+
+    section {
+        margin-bottom: 2rem;
+        padding: 1.5rem;
+        background-color: #f9f9f9;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+    }
+
+    h2 {
+        font-size: 1.5rem;
+        margin-top: 0;
+        margin-bottom: 1rem;
+        color: #333;
+    }
+
+    ul, ol {
+        margin: 0;
+        padding-left: 1.5rem;
+        color: #666;
+        line-height: 1.8;
+    }
+
+    li {
+        margin-bottom: 0.5rem;
+    }
+
+    strong {
+        color: #333;
+    }
+
+    :deep(.nav-link) {
+        color: #0066cc;
+        text-decoration: none;
+    }
+
+    :deep(.nav-link:hover) {
+        text-decoration: underline;
+    }
+</style>

@@ -1,0 +1,495 @@
+@page "/catalog"
+@using YouTubeCatalog.UI.Models
+@using YouTubeCatalog.UI.Services
+@using Microsoft.Fast.Components.FluentUI
+
+<PageTitle>YouTube Catalog - Top Videos</PageTitle>
+
+<div class="catalog-container">
+    <h1>YouTube Catalog</h1>
+    <p class="subtitle">Find the top trending videos from your favorite channels</p>
+
+    @* Channel Picker Component *@
+    @if (!LocalModeEnabled)
+    {
+        <section class="picker-section">
+            <ChannelPicker @bind-SelectedChannels="SelectedChannels" OnChannelSelected="OnChannelSelected" />
+        </section>
+    }
+    else
+    {
+        <section class="picker-section local-file-mode">
+            <FluentTextBlock><strong>Local-file mode</strong> — using bundled channels (no backend). Use the filter below to narrow channels.</FluentTextBlock>
+
+            <div class="local-filter-row">
+                <div class="local-filter">
+                    <FluentLabel For="localFilter">Filter bundled channels</FluentLabel>
+                    <FluentTextField Id="localFilter" Placeholder="Filter bundled channels..." @bind-Value="LocalSearchQuery" @oninput="FilterLocalChannels" />
+                    <div class="local-stats">@((LocalFilteredChannels?.Count ?? 0)) of @((LocalAvailableChannels?.Length) ?? 0) channels</div>
+                </div>
+
+                <div class="local-actions">
+                    <FluentButton Appearance="@Microsoft.Fast.Components.FluentUI.Appearance.Outline" @onclick="() => { SelectedChannels.Clear(); LocalSearchQuery = string.Empty; LocalFilteredChannels = LocalAvailableChannels?.ToList() ?? new(); }">Clear selection</FluentButton>
+                    <FluentButton Disabled="@(LocalFilteredChannels?.Count != 1)" @onclick="() => { if (LocalFilteredChannels?.Count == 1) ToggleLocalSelect(LocalFilteredChannels[0].ChannelId); }">Quick add</FluentButton>
+                    <FluentButton Appearance="@Microsoft.Fast.Components.FluentUI.Appearance.Stealth" @onclick="() => { SelectedChannels = LocalFilteredChannels?.Select(c => c.ChannelId).ToList() ?? new(); }">Select visible</FluentButton>
+                </div>
+            </div>
+
+            @if (LocalAvailableChannels == null)
+            {
+                <div class="local-loading">Loading bundled channels…</div>
+            }
+            else if (LocalFilteredChannels?.Count == 0)
+            {
+                <div class="empty-message">No bundled channels match your filter</div>
+            }
+            else
+            {
+                <div class="local-channel-grid" role="list">
+                    @foreach (var ch in LocalFilteredChannels)
+                    {
+                        <FluentCard Class="@($"local-channel-item {(SelectedChannels.Contains(ch.ChannelId) ? "selected" : "")}")" Role="listitem" @onclick="() => ToggleLocalSelect(ch.ChannelId)">
+                            <FluentStack Orientation="StackOrientation.Horizontal" Gap="12" AlignItems="Center">
+                                <FluentAvatar Image="@ch.ThumbnailUrl" Size="Small" />
+                                <div class="channel-meta" style="min-width:0;overflow:hidden">
+                                    <div class="result-title">@ch.Title</div>
+                                    <div class="result-id">@ch.ChannelId</div>
+                                    @if (!string.IsNullOrWhiteSpace(ch.Description))
+                                    {
+                                        <div class="result-desc">@TruncateDescription(ch.Description, 120)</div>
+                                    }
+                                </div>
+
+                                <div style="margin-left:auto;flex-shrink:0" @onclick:stopPropagation="true">
+                                    @if (SelectedChannels.Contains(ch.ChannelId))
+                                    {
+                                        <FluentButton @onclick="() => RemoveChannel(ch.ChannelId)" Appearance="@Microsoft.Fast.Components.FluentUI.Appearance.Stealth">Remove</FluentButton>
+                                    }
+                                    else
+                                    {
+                                        <FluentButton @onclick="() => ToggleLocalSelect(ch.ChannelId)">Add</FluentButton>
+                                    }
+                                </div>
+                            </FluentStack>
+                        </FluentCard>
+                    }
+                </div>
+            }
+        </section>
+    }
+
+    @* Inputs Section *@
+    <section class="inputs-section">
+        <div class="input-group">
+            <FluentLabel>Selected Channels (@SelectedChannels.Count)</FluentLabel>
+            <div class="selected-channels">
+                @if (SelectedChannels.Count > 0)
+                {
+                    @foreach (var channel in SelectedChannels)
+                    {
+                        <span class="channel-chip">
+                            @channel
+                            <FluentButton class="chip-remove" Title="Remove channel" @onclick="() => RemoveChannel(channel)">✕</FluentButton>
+                        </span>
+                    }
+                }
+                else
+                {
+                    <p class="empty-message">No channels selected</p>
+                }
+            </div>
+        </div>
+
+        <div class="input-row">
+            <div class="input-group">
+                <FluentNumberField Id="topInput" @bind-Value="Top" Min="1" Max="1000" Label="Top X Videos" Placeholder="10" />
+            </div>
+
+            <div class="input-group">
+                <FluentNumberField Id="daysInput" @bind-Value="Days" Min="1" Max="365" Label="Past Y Days" Placeholder="30" />
+            </div> 
+        </div>
+
+        <div class="controls">
+            <FluentButton class="btn-primary fluent-fetch-button" @onclick="FetchResults" Disabled="@(IsLoading || (SelectedChannels.Count == 0 && !LocalModeEnabled))" Title="@(LocalModeEnabled ? "Local-file mode — use the filters; no backend fetch" : null)">
+                @if (IsLoading)
+                {
+                    <FluentProgressRing IsActive="true" Size="Small" />
+                    <span>Fetching...</span>
+                }
+                else
+                {
+                    <span>@(LocalModeEnabled ? "Apply filter" : "Fetch Results")</span>
+                }
+            </FluentButton>
+            <!-- Native fallback button so bUnit can click reliably (hidden off-screen) -->
+            <button type="button" class="fluent-fetch-button-native" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;" aria-hidden="true" @onclick="FetchResults"></button>
+
+            <FluentCheckbox @bind-Value="AutoRefresh">Auto-refresh every 5 min</FluentCheckbox>
+        </div>
+    </section>
+
+    <!-- placeholder responsive wrapper present even before results are loaded (improves testability & keeps DOM stable) -->
+    <div class="data-grid-wrapper" role="region" aria-label="Video results table" aria-hidden="true"></div>
+
+    @* Status Section *@
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <section class="error-section" aria-live="polite">
+            <FluentMessageBar Intent="Error" Dismissible="true" OnDismissed="ClearError">
+                <strong>Error:</strong> @Error
+            </FluentMessageBar>
+        </section>
+    }
+
+    @if (IsLoading)
+    {
+        <section class="loading-section">
+            <FluentProgressRing IsActive="true" Size="Large" />
+            <p>Loading videos...</p>
+        </section>
+    }
+
+    @* Results Section *@
+    @if (!IsLoading && QueryResponse != null && QueryResponse.Videos.Length > 0)
+    {
+        <section class="results-section">
+            <div class="results-header">
+                <h2>Results</h2>
+                <p class="result-count">@QueryResponse.Videos.Length videos found</p>
+                <p class="generated-at">Generated: @QueryResponse.GeneratedAt.ToString("g")</p>
+                @if (QueryResponse.Partial)
+                {
+                    <p class="warning">Partial results - some channels failed</p>
+                }
+            </div>
+            
+            <div class="results-grid">
+                <div class="results-controls">
+                    <label for="sortSelect">Sort by</label>
+                    <select id="sortSelect" @bind="SortBy" class="sort-select">
+                        <option value="Views">Views</option>
+                        <option value="Published">Upload date</option>
+                        <option value="Title">Title</option>
+                        <option value="Channel">Channel</option>
+                    </select>
+
+                    <FluentButton class="sort-toggle" Title="Toggle sort direction" @onclick="ToggleSort">
+                        @(SortDesc ? "Descending" : "Ascending")
+                    </FluentButton>
+                </div>
+
+                <!-- Responsive wrapper: enables horizontal scrolling on small viewports -->
+                <div class="data-grid-wrapper" role="region" aria-label="Video results table">
+                    <FluentDataGrid TGridItem="YouTubeCatalog.UI.Models.VideoDto" Items="@GetSortedVideos()" Compact="true" NoDataText="No videos to display">
+                        <FluentDataGridColumn Title="Video" Template="TitleTemplate" Sortable="true" />
+
+                        <FluentDataGridColumn Field="@nameof(VideoDto.Views)" Title="Views" Sortable="true" Template="ViewsTemplate" />
+
+                        <FluentDataGridColumn Field="@nameof(VideoDto.PublishedAt)" Title="Published" Sortable="true" Template="PublishedTemplate" />
+
+                        <FluentDataGridColumn Title="Actions" Template="ActionsTemplate" />
+                    </FluentDataGrid>
+
+                    @if (IsLoading)
+                    {
+                        <div class="results-loading">
+                            <FluentProgressRing IsActive="true" Size="Large" />
+                            <p>Loading videos...</p>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* Per-Channel Status *@
+            @if (QueryResponse is { PerChannelStatus: { Count: > 0 } })
+            {
+                <div class="channel-status">
+                    <h3>Channel Status</h3>
+                    <ul>
+                        @foreach (var status in QueryResponse.PerChannelStatus)
+                        {
+                            <li>
+                                <strong>@status.ChannelId</strong>: @status.Status 
+                                @if (!string.IsNullOrEmpty(status.Message))
+                                {
+                                    <span class="status-message">(@status.Message)</span>
+                                }
+                                - @status.VideosRetrieved videos
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+        </section>
+    }
+
+    @if (!IsLoading && (QueryResponse == null || QueryResponse.Videos.Length == 0) && !string.IsNullOrEmpty(Error) == false && HasQueried)
+    {
+        <section class="empty-section">
+            <p>No videos found. Try adjusting your parameters or selecting different channels.</p>
+        </section>
+    }
+</div>
+
+@code {
+    [Inject]
+    private CatalogApiClient ApiClient { get; set; } = null!;
+
+    [Inject]
+    private IJSRuntime JS { get; set; } = null!;
+    
+    [Inject]
+    private Microsoft.Extensions.Configuration.IConfiguration Configuration { get; set; } = null!;
+
+    [Inject]
+    private YouTubeCatalog.UI.Services.ILocalCatalogProvider? LocalProvider { get; set; }
+
+    private bool LocalModeEnabled => Configuration.GetValue<bool>("LocalFileMode");
+
+    // local-mode UI state
+    private string LocalSearchQuery { get; set; } = string.Empty;
+    private YouTubeCatalog.UI.Models.LocalChannelDto[]? LocalAvailableChannels { get; set; }
+    private System.Collections.Generic.List<YouTubeCatalog.UI.Models.LocalChannelDto> LocalFilteredChannels { get; set; } = new();
+
+
+    private List<string> SelectedChannels { get; set; } = new();
+    private int Top { get; set; } = 10;
+    private int Days { get; set; } = 30;
+    private bool AutoRefresh { get; set; } = false;
+    private bool IsLoading { get; set; } = false;
+    private string? Error { get; set; }
+    private CatalogQueryResponse? QueryResponse { get; set; }
+    private bool HasQueried { get; set; } = false;
+
+    // DataGrid / sorting state
+    private string SortBy { get; set; } = "Views";
+    private bool SortDesc { get; set; } = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (LocalModeEnabled && LocalProvider != null)
+        {
+            try
+            {
+                LocalAvailableChannels = await LocalProvider.GetChannelsAsync();
+                LocalFilteredChannels = LocalAvailableChannels?.ToList() ?? new();
+            }
+            catch (Exception ex)
+            {
+                // surface a dev-friendly message in the Catalog page
+                Error = $"Local channels load failed: {ex.Message}";
+                LocalAvailableChannels = Array.Empty<YouTubeCatalog.UI.Models.LocalChannelDto>();
+                LocalFilteredChannels = new();
+            }
+        }
+    }
+
+    private void FilterLocalChannels(ChangeEventArgs e)
+    {
+        LocalSearchQuery = e.Value?.ToString() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(LocalSearchQuery))
+        {
+            LocalFilteredChannels = LocalAvailableChannels?.ToList() ?? new();
+            return;
+        }
+
+        LocalFilteredChannels = LocalAvailableChannels?.Where(c => (c.Title ?? string.Empty).Contains(LocalSearchQuery, StringComparison.OrdinalIgnoreCase) || (c.ChannelId ?? string.Empty).Contains(LocalSearchQuery, StringComparison.OrdinalIgnoreCase)).ToList() ?? new();
+    }
+
+    private void ToggleLocalSelect(string channelId)
+    {
+        if (SelectedChannels.Contains(channelId))
+            SelectedChannels.Remove(channelId);
+        else
+            SelectedChannels.Add(channelId);
+    }
+
+    private IEnumerable<VideoDto> GetSortedVideos()
+    {
+        var vids = QueryResponse?.Videos ?? Array.Empty<VideoDto>();
+        return SortBy switch
+        {
+            "Title" => SortDesc ? vids.OrderByDescending(v => v.Title) : vids.OrderBy(v => v.Title),
+            "Channel" => SortDesc ? vids.OrderByDescending(v => v.ChannelTitle) : vids.OrderBy(v => v.ChannelTitle),
+            "Published" => SortDesc ? vids.OrderByDescending(v => v.PublishedAt) : vids.OrderBy(v => v.PublishedAt),
+            _ => SortDesc ? vids.OrderByDescending(v => v.Views) : vids.OrderBy(v => v.Views),
+        };
+    }
+
+    private void ToggleSort()
+    {
+        SortDesc = !SortDesc;
+    }
+
+    // RenderFragment<T> templates for FluentDataGrid columns (keeps Razor parser happy)
+    private RenderFragment<VideoDto> TitleTemplate => video => @<div class="grid-title">
+        @if (!string.IsNullOrEmpty(video.ThumbnailUrl))
+        {
+            <img src="@video.ThumbnailUrl" class="thumb" alt="" />
+        }
+        <div class="video-info">
+            <div class="v-title">@video.Title</div>
+            <div class="v-channel">@video.ChannelTitle</div>
+        </div>
+    </div>;
+
+    private RenderFragment<VideoDto> ViewsTemplate => video => @<FluentBadge Appearance="Appearance.Neutral">@FormatViews(video.Views)</FluentBadge>;
+
+    private RenderFragment<VideoDto> PublishedTemplate => video => @<div class="v-date">@video.PublishedAt.ToString("MMM dd, yyyy")</div>;
+
+    private RenderFragment<VideoDto> ActionsTemplate => video => @<div class="actions" style="display:flex;gap:4px"> 
+        <FluentAnchor Href="@($"https://www.youtube.com/watch?v={video.VideoId}")" Target="_blank" Appearance="Appearance.Accent">Watch</FluentAnchor> 
+        <FluentButton Appearance="Appearance.Stealth" @onclick="() => CopyLink(video.VideoId)">Copy</FluentButton>
+    </div>;
+
+    private void OpenVideo(string videoId)
+    {
+        var url = $"https://www.youtube.com/watch?v={videoId}";
+        _ = JS.InvokeVoidAsync("open", url, "_blank");
+    }
+
+    private void CopyLink(string videoId)
+    {
+        var url = $"https://www.youtube.com/watch?v={videoId}";
+        _ = JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
+    }
+
+    private void RemoveChannel(string channel)
+    {
+        SelectedChannels.Remove(channel);
+    }
+
+    private void OnChannelSelected(string channelId)
+    {
+        // Invoked from ChannelPicker when a channel is selected
+        // The binding already updates SelectedChannels
+    }
+
+    private async Task FetchResults()
+    {
+        if (!LocalModeEnabled && SelectedChannels.Count == 0)
+        {
+            ShowError("Please select at least one channel");
+            return;
+        }
+
+        if (LocalModeEnabled)
+        {
+            // Local-file (filter-only) — extract from in-memory channels
+            HasQueried = true;
+            
+            var selectedLocal = LocalAvailableChannels?
+                .Where(c => SelectedChannels.Contains(c.ChannelId))
+                .ToList() ?? new();
+
+            var cutoff = DateTime.UtcNow.AddDays(-Days);
+            var videos = selectedLocal
+                .SelectMany(c => c.Videos)
+                .Where(v => v.PublishedAt >= cutoff)
+                .OrderByDescending(v => v.PublishedAt)
+                .Take(Top)
+                .ToArray();
+
+            QueryResponse = new CatalogQueryResponse
+            {
+                GeneratedAt = DateTime.UtcNow,
+                Videos = videos,
+                PerChannelStatus = selectedLocal.Select(c => new PerChannelStatusDto
+                {
+                    ChannelId = c.ChannelId,
+                    Status = "success",
+                    VideosRetrieved = c.Videos.Count
+                }).ToList()
+            };
+            IsLoading = false;
+            StateHasChanged();
+            return;
+        }
+
+        if (Top <= 0 || Top > 1000)
+        {
+            ShowError("Top must be between 1 and 1000");
+            return;
+        }
+
+        if (Days <= 0 || Days > 365)
+        {
+            ShowError("Days must be between 1 and 365");
+            return;
+        }
+
+        IsLoading = true;
+        Error = null;
+        HasQueried = true;
+        QueryResponse = null;
+
+        try
+        {
+            QueryResponse = await ApiClient.QueryCatalogAsync(
+                SelectedChannels,
+                Top,
+                Days,
+                CancellationToken.None);
+        }
+        catch (ApiException ex)
+        {
+            ShowError(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Unexpected error: {ex.Message}");
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private CancellationTokenSource? _errorCts;
+
+    private void ShowError(string message, int autoHideMs = 8000)
+    {
+        _errorCts?.Cancel();
+        _errorCts = new CancellationTokenSource();
+        Error = message;
+        StateHasChanged();
+        _ = AutoHideErrorAsync(_errorCts.Token, autoHideMs);
+    }
+
+    private async Task AutoHideErrorAsync(CancellationToken token, int delayMs)
+    {
+        try
+        {
+            await Task.Delay(delayMs, token);
+            if (!token.IsCancellationRequested)
+            {
+                Error = null;
+                StateHasChanged();
+            }
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private void ClearError()
+    {
+        _errorCts?.Cancel();
+        Error = null;
+    }
+
+    private string FormatViews(long views)
+    {
+        if (views >= 1_000_000)
+            return $"{views / 1_000_000}M";
+        if (views >= 1_000)
+            return $"{views / 1_000}K";
+        return views.ToString();
+    }
+
+    private string TruncateDescription(string description, int maxLength)
+    {
+        if (description.Length <= maxLength)
+            return description;
+        return description.Substring(0, maxLength) + "...";
+    }
+}

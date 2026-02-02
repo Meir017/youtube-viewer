@@ -1,0 +1,283 @@
+@using YouTubeCatalog.UI.Utilities
+
+<div class="channel-picker">
+    <FluentStack Orientation="StackOrientation.Vertical" Gap="16">
+        @if (LocalModeEnabled)
+        {
+            <div>
+                <FluentLabel>Choose from bundled channels</FluentLabel>
+                @if (LocalLoadError != null)
+                {
+                    <FluentMessageBar Intent="Error" Dismissible="true" OnDismissed="() => LocalLoadError = null">
+                        <strong>Local-file mode:</strong> @LocalLoadError
+                    </FluentMessageBar>
+                }
+
+                @if (AvailableChannels == null)
+                {
+                    <div>Loading channels…</div>
+                }
+                else
+                {
+                    <FluentStack Gap="8" Class="local-channel-list">
+                        @foreach (var ch in AvailableChannels)
+                        {
+                            <FluentCard Clickable="true" @onclick="() => ToggleSelect(ch.ChannelId)" Class="local-channel-item">
+                                <FluentStack Orientation="StackOrientation.Horizontal" Gap="12" AlignItems="Center">
+                                    <FluentAvatar Image="@ch.ThumbnailUrl" Size="Small" />
+                                    <div style="min-width:0">
+                                        <div class="result-title">@ch.Title</div>
+                                        <div class="result-id">@ch.ChannelId</div>
+                                    </div>
+                                    <div style="margin-left:auto">
+                                        @if (SelectedChannels.Contains(ch.ChannelId))
+                                        {
+                                            <FluentButton Appearance="@Microsoft.Fast.Components.FluentUI.Appearance.Accent" @onclick="() => RemoveChannel(ch.ChannelId)">Remove</FluentButton>
+                                        }
+                                        else
+                                        {
+                                            <FluentButton @onclick="() => AddChannel(ch.ChannelId)">Add</FluentButton>
+                                        }
+                                    </div>
+                                </FluentStack>
+                            </FluentCard>
+                        }
+                    </FluentStack>
+                }
+            </div>
+        }
+        else
+        {
+            <!-- Manual input (multiline) -->
+            <div>
+                <FluentLabel For="channelInput">Add channels (paste URLs or IDs)</FluentLabel>
+                <FluentTextField Id="channelInput" Multiline="true" Rows="4" @bind-Value="ManualInput" Placeholder="Paste channel URLs or IDs, one per line" />
+                <div class="help-text">Supported formats: Direct IDs (UC...), https://www.youtube.com/channel/ID</div>
+            </div>
+
+            <div>
+                <FluentButton class="parse-button" @onclick="ParseAndAddChannels">Parse &amp; add channels</FluentButton>
+                <!-- Native hidden fallback so tests and some assistive tech can activate the same handler -->
+                <button type="button" class="parse-button-native" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;" aria-hidden="true" @onclick="ParseAndAddChannels"></button>
+            </div>
+
+            @if (ParseErrors.Count > 0)
+            {
+                <section class="channelpicker-error" aria-live="assertive">
+                    <FluentMessageBar Intent="Error" Dismissible="true" OnDismissed="ClearParseErrors">
+                        <strong>Could not parse:</strong>
+                        <ul>
+                            @foreach (var error in ParseErrors)
+                            {
+                                <li>@error</li>
+                            }
+                        </ul>
+                    </FluentMessageBar>
+                </section>
+            }
+
+            <!-- Selected channels (chips/badges) -->
+            @if (SelectedChannels?.Count > 0)
+            {
+                <FluentStack Orientation="StackOrientation.Horizontal" Wrap="true" Gap="8" AlignItems="Center">
+                    @foreach (var id in SelectedChannels)
+                    {
+                        <div class="selected-channel" role="listitem">
+                            <FluentBadge>
+                                <span class="channel-id">@id</span>
+                                <FluentButton class="remove-button" Title="Remove channel" @onclick="() => RemoveChannel(id)">✕</FluentButton>
+                            </FluentBadge>
+                        </div>
+                    }
+                </FluentStack>
+            }
+
+            <!-- Search section -->
+            <div>
+                <FluentLabel For="searchInput">Or search for channels</FluentLabel>
+                <FluentTextField Id="searchInput" @bind-Value="SearchQuery" @oninput="SearchChannels" Placeholder="Search channel name..." />
+
+                @if (IsSearching)
+                {
+                    <FluentProgressRing IsActive="true" Size="Small" />
+                }
+
+                @if (SearchResults?.Count > 0)
+                {
+                    <FluentStack Gap="8" Class="search-results">
+                        @foreach (var result in SearchResults)
+                        {
+                            <FluentCard Clickable="true" @onclick="() => SelectSearchResult(result)" Class="search-result-item">
+                                <FluentStack Orientation="StackOrientation.Horizontal" Gap="12" AlignItems="Center">
+                                    <FluentAvatar Image="@result.ThumbnailUrl" Size="Small" />
+                                    <div style="min-width:0">
+                                        <div class="result-title">@result.Title</div>
+                                        <div class="result-id">@result.ChannelId</div>
+                                    </div>
+                                </FluentStack>
+                            </FluentCard>
+                        }
+                    </FluentStack>
+                }
+            </div>
+        }
+    </FluentStack>
+</div>
+
+@code {
+    [Inject]
+    private Microsoft.Extensions.Configuration.IConfiguration Configuration { get; set; } = null!;
+
+    [Inject]
+    private YouTubeCatalog.UI.Services.ILocalCatalogProvider? LocalProvider { get; set; }
+
+    [Parameter]
+    public List<string> SelectedChannels { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<List<string>> SelectedChannelsChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnChannelSelected { get; set; }
+
+    private string ManualInput { get; set; } = string.Empty;
+    private string SearchQuery { get; set; } = string.Empty;
+    private bool IsSearching { get; set; } = false;
+    private List<string> ParseErrors { get; set; } = new();
+    private List<ChannelSearchResult> SearchResults { get; set; } = new();
+
+    // Local-file mode state
+    private bool LocalModeEnabled => Configuration.GetValue<bool>("LocalFileMode");
+    private YouTubeCatalog.UI.Models.LocalChannelDto[]? AvailableChannels { get; set; }
+    private string? LocalLoadError { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (LocalModeEnabled && LocalProvider != null)
+        {
+            try
+            {
+                AvailableChannels = await LocalProvider.GetChannelsAsync();
+            }
+            catch (Exception ex)
+            {
+                // fall back to default behavior and surface a dev-friendly message
+                LocalLoadError = ex.Message;
+                AvailableChannels = null;
+                Console.WriteLine($"Local channels load failed: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task ParseAndAddChannels()
+    {
+        ParseErrors.Clear();
+        var parsed = ChannelValidator.ParseChannelInput(ManualInput);
+
+        if (parsed.Count == 0)
+        {
+            ParseErrors.Add("No valid channel IDs found in input");
+            _ = AutoDismissParseErrorsAsync();
+            return;
+        }
+
+        foreach (var id in parsed)
+        {
+            if (!SelectedChannels.Contains(id))
+            {
+                SelectedChannels.Add(id);
+            }
+        }
+
+        ManualInput = string.Empty;
+        await SelectedChannelsChanged.InvokeAsync(SelectedChannels);
+    }
+
+    private void ClearParseErrors()
+    {
+        ParseErrors.Clear();
+    }
+
+    private async Task SearchChannels(ChangeEventArgs e)
+    {
+        SearchQuery = e.Value?.ToString() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(SearchQuery) || SearchQuery.Length < 2)
+        {
+            SearchResults.Clear();
+            return;
+        }
+
+        IsSearching = true;
+        try
+        {
+            // API call will be implemented in Phase 4 (with ChannelsController)
+            // For now, simulating search
+            await Task.Delay(300);
+            SearchResults = new List<ChannelSearchResult>();
+        }
+        finally
+        {
+            IsSearching = false;
+        }
+    }
+
+    private async Task SelectSearchResult(ChannelSearchResult result)
+    {
+        if (!SelectedChannels.Contains(result.ChannelId))
+        {
+            SelectedChannels.Add(result.ChannelId);
+            await SelectedChannelsChanged.InvokeAsync(SelectedChannels);
+            await OnChannelSelected.InvokeAsync(result.ChannelId);
+        }
+        SearchQuery = string.Empty;
+        SearchResults.Clear();
+    }
+
+    private async Task RemoveChannel(string channelId)
+    {
+        if (SelectedChannels.Contains(channelId))
+        {
+            SelectedChannels.Remove(channelId);
+            await SelectedChannelsChanged.InvokeAsync(SelectedChannels);
+        }
+    }
+
+    private async Task AddChannel(string channelId)
+    {
+        if (!SelectedChannels.Contains(channelId))
+        {
+            SelectedChannels.Add(channelId);
+            await SelectedChannelsChanged.InvokeAsync(SelectedChannels);
+        }
+    }
+
+    private void ToggleSelect(string channelId)
+    {
+        if (SelectedChannels.Contains(channelId))
+            _ = RemoveChannel(channelId);
+        else
+            _ = AddChannel(channelId);
+    }
+
+    private async Task AutoDismissParseErrorsAsync(int delayMs = 6000)
+    {
+        try
+        {
+            await Task.Delay(delayMs);
+            if (ParseErrors.Count > 0)
+            {
+                ParseErrors.Clear();
+                StateHasChanged();
+            }
+        }
+        catch { }
+    }
+
+    public class ChannelSearchResult
+    {
+        public string ChannelId { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string ThumbnailUrl { get; set; } = string.Empty;
+    }
+}

@@ -1,0 +1,39 @@
+﻿<FluentStack class="top-row" orientation="horizontal" horizontalAlign="space-between" verticalAlign="center">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">YouTube Catalog</a>
+        <FluentButton title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu" aria-expanded="@AriaExpanded" aria-controls="main-nav">
+            <span class="navbar-toggler-icon" aria-hidden="true"></span>
+            <span class="sr-only">Toggle navigation</span>
+        </FluentButton>
+    </div>
+</FluentStack>
+
+<FluentStack class="@NavMenuCssClass nav-scrollable" id="main-nav" role="navigation" aria-label="Main navigation" @onclick="ToggleNavMenu">
+    <nav class="flex-column" role="menubar">
+        <div class="nav-item px-3" role="none">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All" role="menuitem">
+                <span class="oi oi-home" aria-hidden="true"></span>
+                <span class="navlink-text">Home</span>
+            </NavLink>
+        </div>
+        <div class="nav-item px-3" role="none">
+            <NavLink class="nav-link" href="catalog" role="menuitem">
+                <span class="oi oi-video" aria-hidden="true"></span>
+                <span class="navlink-text">Catalog</span>
+            </NavLink>
+        </div>
+    </nav>
+</FluentStack>
+
+@code {
+    private bool collapseNavMenu = true;
+
+    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+    private string AriaExpanded => (!collapseNavMenu).ToString().ToLower();
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
+}

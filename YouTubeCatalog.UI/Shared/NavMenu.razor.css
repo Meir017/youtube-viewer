@@ -1,0 +1,36 @@
+/* NavMenu: keep only spacing, focus/active and scroll helpers — visuals handled by FluentUI. */
+
+.top-row { height: 3.5rem; }
+
+.navbar-brand { font-weight: 600; }
+
+.nav-item { font-size: 0.95rem; }
+
+/* Layout helper for nav links (FluentUI provides color, hover, active styles) */
+.nav-item ::deep a {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+  height: 3rem;
+  border-radius: 6px;
+}
+
+/* Use Fluent tokens for focus/active; keep an accessible outline/shadow helper */
+.nav-item ::deep a.active {
+  box-shadow: var(--fluent-shadow-elevation-2, none);
+}
+
+/* Toggler must be touch-friendly on small screens */
+.navbar-toggler { min-width: 44px; min-height: 44px; padding: 0.25rem; }
+
+/* Keep behaviour helpers */
+@media (min-width: 640px) {
+  .navbar-toggler { display: none; }
+  .collapse { display: block; }
+  .nav-scrollable { height: calc(100vh - 3.5rem); overflow-y: auto; }
+}
+
+@media (max-width: 639.98px) {
+  .nav-item ::deep a { min-height: 44px; padding: 0 0.75rem; }
+}
