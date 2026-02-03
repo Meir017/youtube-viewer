@@ -41,8 +41,9 @@ bun run generator/youtube.ts --channel=@GitHub --html --output=output.html
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--channel=<id>` | Channel ID or handle (can be comma-separated or repeated) | `UCYp3rk70ACGXQ4gFAiMr1SQ` |
-| `--html` | Generate HTML output | false |
-| `--output=<file>` | Output file path | `channel.html` |
+| `--format=<type>` | Output format: `html`, `json`, or `console` | `console` |
+| `--html` | Generate HTML output (shorthand for `--format=html`) | false |
+| `--output=<file>` | Output file path | `channel.html` or `channels.json` |
 | `--limit=<n>` | Maximum videos per channel | 150 |
 | `--max-age=<days>` | Maximum video age in days | Infinity |
 | `--shorts-limit=<n>` | Maximum shorts to fetch (0 = disabled) | 0 |
@@ -57,6 +58,12 @@ bun run generator/youtube.ts --channel=@GitHub --html --output=output.html
 
 ```bash
 bun run generator/youtube.ts --channel=@GitHub,@code,@MicrosoftDeveloper --html --output=tech.html --max-age=30 --limit=500
+```
+
+### Generate JSON for the website
+
+```bash
+bun run generator/youtube.ts --channel=@GitHub,@Fireship --format=json --output=website/data/channels.json
 ```
 
 ### Using PowerShell scripts
