@@ -126,6 +126,9 @@ dist
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test
 
+# Website data (user channels)
+website/data/channels.json
+
 # yarn v3
 .pnp.*
 .yarn/*
