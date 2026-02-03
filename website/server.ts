@@ -60,9 +60,30 @@ const server = Bun.serve({
                 return new Response(null, { headers: corsHeaders });
             }
 
-            // GET /api/channels - List all channels
+            // GET /api/channels - List all channels (optionally refresh with maxAgeDays)
             if (path === '/api/channels' && req.method === 'GET') {
+                const maxAgeDaysParam = url.searchParams.get('maxAgeDays');
                 const store = await loadStore();
+                
+                // If maxAgeDays is provided, refresh all channels with the new setting
+                if (maxAgeDaysParam) {
+                    const maxAgeDays = parseInt(maxAgeDaysParam) || 30;
+                    console.log(`Refreshing all channels with maxAgeDays=${maxAgeDays}`);
+                    
+                    for (const channel of store.channels) {
+                        try {
+                            console.log(`  Refreshing: ${channel.handle}`);
+                            const channelData = await processChannelForWeb(channel.handle, { maxAgeDays });
+                            channel.data = channelData;
+                            channel.lastUpdated = new Date().toISOString();
+                        } catch (e) {
+                            console.error(`  Failed to refresh ${channel.handle}:`, e);
+                        }
+                    }
+                    
+                    await saveStore(store);
+                }
+                
                 return Response.json(store.channels, { headers: corsHeaders });
             }
 
