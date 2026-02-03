@@ -4,6 +4,20 @@ const API_BASE = '/api';
 // Channel colors for indicators
 const CHANNEL_COLORS = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dfe6e9', '#fd79a8', '#a29bfe'];
 
+// Virtual Scroll Configuration
+const VIRTUAL_SCROLL_CONFIG = {
+    videos: {
+        itemHeight: 280, // Approximate height of a video card
+        itemWidth: 320,  // Min width for grid calculation
+        buffer: 3,       // Number of rows to render above/below viewport
+    },
+    shorts: {
+        itemHeight: 380, // Approximate height of a short card
+        itemWidth: 180,  // Min width for grid calculation  
+        buffer: 3,       // Number of rows to render above/below viewport
+    }
+};
+
 // State
 let collections = [];
 let activeCollectionId = null;
@@ -18,6 +32,130 @@ let currentSort = { by: 'default', order: 'desc' };
 let currentMaxAge = 30;
 let minDurationMinutes = 0;
 let maxDurationMinutes = Infinity;
+
+// Virtual scroll state
+let videosVirtualScroll = null;
+let shortsVirtualScroll = null;
+
+// Virtual Scroll Grid Class
+class VirtualScrollGrid {
+    constructor(container, config, renderItem) {
+        this.container = container;
+        this.config = config;
+        this.renderItem = renderItem;
+        this.items = [];
+        this.renderedRange = { start: 0, end: 0 };
+        this.columnsCount = 1;
+        this.rowHeight = config.itemHeight;
+        
+        // Create inner container for items
+        this.innerContainer = document.createElement('div');
+        this.innerContainer.className = 'virtual-scroll-inner';
+        this.container.innerHTML = '';
+        this.container.appendChild(this.innerContainer);
+        
+        // Bind methods
+        this.handleScroll = this.handleScroll.bind(this);
+        this.handleResize = this.handleResize.bind(this);
+        
+        // Setup listeners
+        window.addEventListener('scroll', this.handleScroll, { passive: true });
+        window.addEventListener('resize', this.handleResize, { passive: true });
+        
+        this.resizeObserver = new ResizeObserver(this.handleResize);
+        this.resizeObserver.observe(this.container);
+    }
+    
+    setItems(items) {
+        this.items = items;
+        // Reset rendered range to force re-render with new items
+        this.renderedRange = { start: -1, end: -1 };
+        this.calculateLayout();
+        this.render();
+    }
+    
+    calculateLayout() {
+        const containerWidth = this.container.clientWidth;
+        const gap = 25; // Grid gap from CSS
+        this.columnsCount = Math.max(1, Math.floor((containerWidth + gap) / (this.config.itemWidth + gap)));
+        this.rowHeight = this.config.itemHeight + gap;
+        
+        const totalRows = Math.ceil(this.items.length / this.columnsCount);
+        const totalHeight = totalRows * this.rowHeight;
+        
+        this.innerContainer.style.height = `${totalHeight}px`;
+        this.innerContainer.style.position = 'relative';
+    }
+    
+    getVisibleRange() {
+        const scrollTop = window.scrollY;
+        const viewportHeight = window.innerHeight;
+        const containerRect = this.container.getBoundingClientRect();
+        const containerTop = containerRect.top + scrollTop;
+        
+        // Calculate which rows are visible
+        const relativeScrollTop = Math.max(0, scrollTop - containerTop);
+        const startRow = Math.max(0, Math.floor(relativeScrollTop / this.rowHeight) - this.config.buffer);
+        const visibleRows = Math.ceil(viewportHeight / this.rowHeight) + this.config.buffer * 2;
+        const endRow = startRow + visibleRows;
+        
+        const startIndex = startRow * this.columnsCount;
+        const endIndex = Math.min(this.items.length, endRow * this.columnsCount);
+        
+        return { start: startIndex, end: endIndex };
+    }
+    
+    handleScroll() {
+        requestAnimationFrame(() => this.render());
+    }
+    
+    handleResize() {
+        this.calculateLayout();
+        this.render();
+    }
+    
+    render() {
+        if (this.items.length === 0) {
+            this.innerContainer.innerHTML = '';
+            return;
+        }
+        
+        const { start, end } = this.getVisibleRange();
+        
+        // Only re-render if range changed significantly
+        if (start === this.renderedRange.start && end === this.renderedRange.end) {
+            return;
+        }
+        
+        this.renderedRange = { start, end };
+        
+        const gap = 25;
+        const itemWidth = (this.container.clientWidth - (this.columnsCount - 1) * gap) / this.columnsCount;
+        
+        let html = '';
+        for (let i = start; i < end; i++) {
+            const item = this.items[i];
+            const row = Math.floor(i / this.columnsCount);
+            const col = i % this.columnsCount;
+            const top = row * this.rowHeight;
+            const left = col * (itemWidth + gap);
+            
+            html += `<div class="virtual-item" style="position:absolute;top:${top}px;left:${left}px;width:${itemWidth}px;">
+                ${this.renderItem(item)}
+            </div>`;
+        }
+        
+        this.innerContainer.innerHTML = html;
+    }
+    
+    destroy() {
+        window.removeEventListener('scroll', this.handleScroll);
+        window.removeEventListener('resize', this.handleResize);
+        if (this.resizeObserver) {
+            this.resizeObserver.disconnect();
+        }
+    }
+}
 
 // DOM Elements
 const addChannelForm = document.getElementById('addChannelForm');
@@ -717,6 +855,12 @@ function renderVideos() {
     videoCountEl.textContent = sorted.length;
     
     if (sorted.length === 0) {
+        // Destroy existing virtual scroll
+        if (videosVirtualScroll) {
+            videosVirtualScroll.destroy();
+            videosVirtualScroll = null;
+        }
+        
         if (channels.length === 0) {
             videosGrid.innerHTML = `
                 <div class="empty-state">
@@ -735,7 +879,15 @@ function renderVideos() {
         return;
     }
     
-    videosGrid.innerHTML = sorted.map(video => renderVideoCard(video)).join('');
+    // Initialize or update virtual scroll
+    if (!videosVirtualScroll) {
+        videosVirtualScroll = new VirtualScrollGrid(
+            videosGrid,
+            VIRTUAL_SCROLL_CONFIG.videos,
+            renderVideoCard
+        );
+    }
+    videosVirtualScroll.setItems(sorted);
 }
 
 // Render shorts grid
@@ -745,12 +897,26 @@ function renderShorts() {
     shortsCountEl.textContent = filtered.length;
     
     if (filtered.length === 0) {
+        // Destroy existing virtual scroll
+        if (shortsVirtualScroll) {
+            shortsVirtualScroll.destroy();
+            shortsVirtualScroll = null;
+        }
         shortsSection.hidden = true;
         return;
     }
     
     shortsSection.hidden = false;
-    shortsGrid.innerHTML = filtered.map(short => renderShortCard(short)).join('');
+    
+    // Initialize or update virtual scroll
+    if (!shortsVirtualScroll) {
+        shortsVirtualScroll = new VirtualScrollGrid(
+            shortsGrid,
+            VIRTUAL_SCROLL_CONFIG.shorts,
+            renderShortCard
+        );
+    }
+    shortsVirtualScroll.setItems(filtered);
 }
 
 // Render a video card

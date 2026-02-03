@@ -575,9 +575,18 @@ body {
 
 /* Video Grid */
 .videos-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 25px;
+    display: block;
+    position: relative;
+    min-height: 200px;
+}
+
+.videos-grid .virtual-scroll-inner {
+    position: relative;
+    width: 100%;
+}
+
+.videos-grid .virtual-item {
+    box-sizing: border-box;
 }
 
 .video-card {
@@ -684,9 +693,18 @@ body {
 }
 
 .shorts-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 20px;
+    display: block;
+    position: relative;
+    min-height: 200px;
+}
+
+.shorts-grid .virtual-scroll-inner {
+    position: relative;
+    width: 100%;
+}
+
+.shorts-grid .virtual-item {
+    box-sizing: border-box;
 }
 
 .short-card {
@@ -767,7 +785,7 @@ body {
     text-align: center;
     padding: 60px 20px;
     opacity: 0.6;
-    grid-column: 1 / -1;
+    width: 100%;
 }
 
 .empty-state h3 {
