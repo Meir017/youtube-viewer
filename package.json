@@ -3,12 +3,13 @@
   "version": "1.0.0",
   "description": "A Bun CLI tool for fetching and aggregating videos from multiple YouTube channels",
   "type": "module",
-  "main": "generator/youtube.ts",
+  "main": "generator/index.ts",
   "scripts": {
-    "start": "bun run generator/youtube.ts",
-    "tech": "bun run generator/youtube.ts --channel=@GitHub,@code,@MicrosoftDeveloper,@dotnet,@GoogleDevelopers,@shanselman,@nickchapsas,@anthropic-ai,@openai --html --output=dist/tech.html --max-age=30 --limit=500",
-    "movies": "bun run generator/youtube.ts --channel=@peacock,@Netflix,@PrimeVideo,@HBO,@Hulu,@AppleTV,@20thCenturyStudios,@UniversalPictures,@AmazonMGMStudios,@LionsgateMovies,@BoxofficeOneMedia,@WarnerBros,@disneyplus,@hbomax,@A24,@MovieGasm,@FocusFeatures,@paramountpictures,@MovieTrailersSourceHD,@sonypictures --html --output=dist/movies.html --max-age=1460 --limit=500 --min-length=60",
-    "podcasts": "bun run generator/youtube.ts --channel=@lexfriedman,@Alex.kantrowitz,@DwarkeshPatel,@CleoAbram,@DecoderPod,@Github,@openai,@anthropic-ai,@stripe,@Meter-Network --html --output=dist/tech-podcasts.html --max-age=730 --limit=500 --min-length=1800 --enrich --enrich-concurrency=10"
+    "start": "bun run generator/index.ts",
+    "web": "bun run website/server.ts",
+    "tech": "bun run generator/index.ts --channel=@GitHub,@code,@MicrosoftDeveloper,@dotnet,@GoogleDevelopers,@shanselman,@nickchapsas,@anthropic-ai,@openai --html --output=dist/tech.html --max-age=30 --limit=500",
+    "movies": "bun run generator/index.ts --channel=@peacock,@Netflix,@PrimeVideo,@HBO,@Hulu,@AppleTV,@20thCenturyStudios,@UniversalPictures,@AmazonMGMStudios,@LionsgateMovies,@BoxofficeOneMedia,@WarnerBros,@disneyplus,@hbomax,@A24,@MovieGasm,@FocusFeatures,@paramountpictures,@MovieTrailersSourceHD,@sonypictures --html --output=dist/movies.html --max-age=1460 --limit=500 --min-length=60",
+    "podcasts": "bun run generator/index.ts --channel=@lexfriedman,@Alex.kantrowitz,@DwarkeshPatel,@CleoAbram,@DecoderPod,@Github,@openai,@anthropic-ai,@stripe,@Meter-Network --html --output=dist/tech-podcasts.html --max-age=730 --limit=500 --min-length=1800 --enrich --enrich-concurrency=10"
   },
   "keywords": [
     "youtube",
