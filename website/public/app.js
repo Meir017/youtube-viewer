@@ -5,6 +5,8 @@ const API_BASE = '/api';
 const CHANNEL_COLORS = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dfe6e9', '#fd79a8', '#a29bfe'];
 
 // State
+let collections = [];
+let activeCollectionId = null;
 let channels = [];
 let allVideos = [];
 let allShorts = [];
@@ -23,12 +25,17 @@ const channelInput = document.getElementById('channelInput');
 const addBtn = document.getElementById('addBtn');
 const errorMessage = document.getElementById('errorMessage');
 const loadingOverlay = document.getElementById('loadingOverlay');
+const collectionTabs = document.getElementById('collectionTabs');
 const channelTabs = document.getElementById('channelTabs');
+const channelTabsContainer = document.getElementById('channelTabsContainer');
+const addChannelSection = document.getElementById('addChannelSection');
+const catalogFilters = document.getElementById('catalogFilters');
 const videosGrid = document.getElementById('videosGrid');
 const shortsGrid = document.getElementById('shortsGrid');
 const searchBox = document.getElementById('searchBox');
 const searchBoxShorts = document.getElementById('searchBoxShorts');
 const sortButtons = document.querySelectorAll('.sort-btn');
+const totalCollectionsEl = document.getElementById('totalCollections');
 const totalChannelsEl = document.getElementById('totalChannels');
 const totalVideosEl = document.getElementById('totalVideos');
 const totalShortsEl = document.getElementById('totalShorts');
@@ -42,9 +49,16 @@ const applyMaxAgeBtn = document.getElementById('applyMaxAgeBtn');
 const minDurationInput = document.getElementById('minDurationInput');
 const maxDurationInput = document.getElementById('maxDurationInput');
 
+// Collection modal elements
+const addCollectionBtn = document.getElementById('addCollectionBtn');
+const addCollectionModal = document.getElementById('addCollectionModal');
+const addCollectionForm = document.getElementById('addCollectionForm');
+const collectionNameInput = document.getElementById('collectionNameInput');
+const cancelCollectionBtn = document.getElementById('cancelCollectionBtn');
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    loadChannels();
+    loadCollections();
     addChannelForm.addEventListener('submit', handleAddChannel);
     searchBox.addEventListener('input', handleSearch);
     searchBoxShorts.addEventListener('input', handleSearchShorts);
@@ -57,6 +71,48 @@ document.addEventListener('DOMContentLoaded', () => {
     applyMaxAgeBtn.addEventListener('click', handleApplyMaxAge);
     minDurationInput.addEventListener('input', handleDurationFilter);
     maxDurationInput.addEventListener('input', handleDurationFilter);
+    
+    // Collection modal listeners
+    addCollectionBtn.addEventListener('click', () => {
+        addCollectionModal.hidden = false;
+        collectionNameInput.focus();
+    });
+    
+    cancelCollectionBtn.addEventListener('click', () => {
+        addCollectionModal.hidden = true;
+        collectionNameInput.value = '';
+    });
+    
+    addCollectionForm.addEventListener('submit', handleAddCollection);
+    
+    // Close modal on backdrop click
+    addCollectionModal.addEventListener('click', (e) => {
+        if (e.target === addCollectionModal) {
+            addCollectionModal.hidden = true;
+            collectionNameInput.value = '';
+        }
+    });
+    
+    // Rename collection modal listeners
+    const renameCollectionModal = document.getElementById('renameCollectionModal');
+    const renameCollectionForm = document.getElementById('renameCollectionForm');
+    const cancelRenameBtn = document.getElementById('cancelRenameBtn');
+    const renameCollectionInput = document.getElementById('renameCollectionInput');
+    
+    cancelRenameBtn.addEventListener('click', () => {
+        renameCollectionModal.hidden = true;
+        renameCollectionInput.value = '';
+    });
+    
+    renameCollectionForm.addEventListener('submit', handleRenameCollection);
+    
+    // Close rename modal on backdrop click
+    renameCollectionModal.addEventListener('click', (e) => {
+        if (e.target === renameCollectionModal) {
+            renameCollectionModal.hidden = true;
+            renameCollectionInput.value = '';
+        }
+    });
 });
 
 // Parse duration string (e.g., "3:35", "1:00:06") to seconds
@@ -178,16 +234,17 @@ function handleDurationFilter() {
 
 // Handle max-age apply button (reloads catalog from server)
 async function handleApplyMaxAge() {
-    const newMaxAge = parseInt(maxAgeInput.value) || 0;
-    if (newMaxAge === currentMaxAge) return;
+    if (!activeCollectionId) return;
     
+    const newMaxAge = parseInt(maxAgeInput.value) || 0;
     currentMaxAge = newMaxAge;
+    
     applyMaxAgeBtn.disabled = true;
     applyMaxAgeBtn.textContent = '...';
     applyMaxAgeBtn.classList.add('loading');
     
     try {
-        await refreshAllChannels();
+        await refreshCollectionChannels();
     } catch (error) {
         showError('Failed to reload channels with new max age');
         console.error('Max age refresh error:', error);
@@ -198,17 +255,21 @@ async function handleApplyMaxAge() {
     }
 }
 
-// Refresh all channels with current max-age setting
-async function refreshAllChannels() {
+// Refresh channels in current collection with current max-age setting
+async function refreshCollectionChannels() {
+    if (!activeCollectionId) return;
+    
     showLoading(true);
     
     try {
-        const maxAgeDays = currentMaxAge === 0 ? 36500 : currentMaxAge; // 0 = all time (~100 years)
-        const response = await fetch(`${API_BASE}/channels?maxAgeDays=${maxAgeDays}`);
+        const maxAgeDays = currentMaxAge === 0 ? 36500 : currentMaxAge;
+        const response = await fetch(`${API_BASE}/collections/${activeCollectionId}/channels?maxAgeDays=${maxAgeDays}`);
         if (!response.ok) throw new Error('Failed to refresh channels');
         channels = await response.json();
         processChannelData();
-        renderAll();
+        renderChannelTabs();
+        renderVideos();
+        renderShorts();
     } finally {
         showLoading(false);
     }
@@ -240,18 +301,43 @@ function filterShorts(shorts) {
     });
 }
 
-// Load channels from API
-async function loadChannels() {
+// Load collections from API
+async function loadCollections() {
     showLoading(true);
     try {
-        const response = await fetch(`${API_BASE}/channels`);
+        const response = await fetch(`${API_BASE}/collections`);
+        if (!response.ok) throw new Error('Failed to load collections');
+        collections = await response.json();
+        
+        // Auto-select first collection if exists
+        if (collections.length > 0 && !activeCollectionId) {
+            activeCollectionId = collections[0].id;
+            await loadCollectionChannels(activeCollectionId);
+        }
+        
+        renderAll();
+    } catch (error) {
+        showError('Failed to load collections. Please refresh the page.');
+        console.error('Load error:', error);
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Load channels for a specific collection
+async function loadCollectionChannels(collectionId) {
+    showLoading(true);
+    try {
+        const response = await fetch(`${API_BASE}/collections/${collectionId}/channels`);
         if (!response.ok) throw new Error('Failed to load channels');
         channels = await response.json();
         processChannelData();
-        renderAll();
     } catch (error) {
-        showError('Failed to load channels. Please refresh the page.');
-        console.error('Load error:', error);
+        showError('Failed to load channels.');
+        console.error('Load channels error:', error);
+        channels = [];
+        allVideos = [];
+        allShorts = [];
     } finally {
         showLoading(false);
     }
@@ -292,18 +378,145 @@ function processChannelData() {
     });
 }
 
-// Add a new channel
+// Add a new collection
+async function handleAddCollection(e) {
+    e.preventDefault();
+    
+    const name = collectionNameInput.value.trim();
+    if (!name) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/collections`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to add collection');
+        }
+        
+        collections.push(data);
+        activeCollectionId = data.id;
+        channels = [];
+        allVideos = [];
+        allShorts = [];
+        renderAll();
+        
+        addCollectionModal.hidden = true;
+        collectionNameInput.value = '';
+    } catch (error) {
+        showError(error.message);
+        console.error('Add collection error:', error);
+    }
+}
+
+// Delete a collection
+async function deleteCollection(id, e) {
+    e.stopPropagation();
+    if (!confirm('Delete this collection and all its channels?')) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/collections/${id}`, {
+            method: 'DELETE',
+        });
+        
+        if (!response.ok) throw new Error('Failed to delete collection');
+        
+        collections = collections.filter(c => c.id !== id);
+        
+        if (activeCollectionId === id) {
+            activeCollectionId = collections.length > 0 ? collections[0].id : null;
+            if (activeCollectionId) {
+                await loadCollectionChannels(activeCollectionId);
+            } else {
+                channels = [];
+                allVideos = [];
+                allShorts = [];
+            }
+        }
+        
+        renderAll();
+    } catch (error) {
+        showError('Failed to delete collection');
+        console.error('Delete collection error:', error);
+    }
+}
+
+// Open rename collection modal
+function openRenameModal(id, currentName, e) {
+    e.stopPropagation();
+    const renameModal = document.getElementById('renameCollectionModal');
+    const renameInput = document.getElementById('renameCollectionInput');
+    const renameIdInput = document.getElementById('renameCollectionId');
+    
+    renameInput.value = currentName;
+    renameIdInput.value = id;
+    renameModal.hidden = false;
+    renameInput.focus();
+    renameInput.select();
+}
+
+// Rename a collection
+async function handleRenameCollection(e) {
+    e.preventDefault();
+    
+    const renameInput = document.getElementById('renameCollectionInput');
+    const renameIdInput = document.getElementById('renameCollectionId');
+    const renameModal = document.getElementById('renameCollectionModal');
+    
+    const id = renameIdInput.value;
+    const newName = renameInput.value.trim();
+    
+    if (!newName) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/collections/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: newName }),
+        });
+        
+        if (!response.ok) throw new Error('Failed to rename collection');
+        
+        const updated = await response.json();
+        const index = collections.findIndex(c => c.id === id);
+        if (index !== -1) {
+            collections[index] = updated;
+        }
+        
+        renderCollectionTabs();
+        renameModal.hidden = true;
+    } catch (error) {
+        showError('Failed to rename collection');
+        console.error('Rename collection error:', error);
+    }
+}
+
+// Select a collection
+async function selectCollection(id) {
+    if (activeCollectionId === id) return;
+    
+    activeCollectionId = id;
+    activeChannel = 'all';
+    await loadCollectionChannels(id);
+    renderAll();
+}
+
+// Add a new channel to current collection
 async function handleAddChannel(e) {
     e.preventDefault();
     
     const handle = channelInput.value.trim();
-    if (!handle) return;
+    if (!handle || !activeCollectionId) return;
     
     setAddButtonLoading(true);
     hideError();
     
     try {
-        const response = await fetch(`${API_BASE}/channels`, {
+        const response = await fetch(`${API_BASE}/collections/${activeCollectionId}/channels`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ handle }),
@@ -317,7 +530,10 @@ async function handleAddChannel(e) {
         
         channels.push(data);
         processChannelData();
-        renderAll();
+        renderChannelTabs();
+        renderVideos();
+        renderShorts();
+        renderSummaryStats();
         channelInput.value = '';
     } catch (error) {
         showError(error.message);
@@ -327,13 +543,14 @@ async function handleAddChannel(e) {
     }
 }
 
-// Delete a channel
+// Delete a channel from current collection
 async function deleteChannel(id, e) {
     e.stopPropagation();
     if (!confirm('Remove this channel?')) return;
+    if (!activeCollectionId) return;
     
     try {
-        const response = await fetch(`${API_BASE}/channels/${id}`, {
+        const response = await fetch(`${API_BASE}/collections/${activeCollectionId}/channels/${id}`, {
             method: 'DELETE',
         });
         
@@ -342,20 +559,25 @@ async function deleteChannel(id, e) {
         channels = channels.filter(c => c.id !== id);
         activeChannel = 'all';
         processChannelData();
-        renderAll();
+        renderChannelTabs();
+        renderVideos();
+        renderShorts();
+        renderSummaryStats();
     } catch (error) {
         showError('Failed to delete channel');
         console.error('Delete error:', error);
     }
 }
 
-// Refresh all channels
+// Refresh a channel in current collection
 async function refreshChannel(id) {
+    if (!activeCollectionId) return;
+    
     const tab = document.querySelector(`[data-channel="${channels.findIndex(c => c.id === id)}"]`);
     if (tab) tab.classList.add('refreshing');
     
     try {
-        const response = await fetch(`${API_BASE}/channels/${id}/refresh`, {
+        const response = await fetch(`${API_BASE}/collections/${activeCollectionId}/channels/${id}/refresh`, {
             method: 'POST',
         });
         
@@ -367,7 +589,10 @@ async function refreshChannel(id) {
             channels[index] = updated;
         }
         processChannelData();
-        renderAll();
+        renderChannelTabs();
+        renderVideos();
+        renderShorts();
+        renderSummaryStats();
     } catch (error) {
         showError('Failed to refresh channel');
         console.error('Refresh error:', error);
@@ -389,14 +614,54 @@ function setActiveChannel(channelFilter) {
 
 // Render all components
 function renderAll() {
+    renderCollectionTabs();
     renderSummaryStats();
+    updateUIVisibility();
     renderChannelTabs();
     renderVideos();
     renderShorts();
 }
 
+// Render collection tabs
+function renderCollectionTabs() {
+    const collectionTabsHtml = collections.map(col => {
+        return `
+            <button class="collection-tab ${activeCollectionId === col.id ? 'active' : ''}" data-collection="${col.id}">
+                <span class="collection-name">${escapeHtml(col.name)}</span>
+                <span class="collection-actions">
+                    <span class="rename-collection" onclick="openRenameModal('${col.id}', '${escapeHtml(col.name)}', event)" title="Rename collection">✎</span>
+                    <span class="remove-collection" onclick="deleteCollection('${col.id}', event)" title="Delete collection">✕</span>
+                </span>
+            </button>
+        `;
+    }).join('');
+    
+    collectionTabs.innerHTML = collectionTabsHtml;
+    
+    // Add click handlers
+    collectionTabs.querySelectorAll('.collection-tab').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            if (!e.target.classList.contains('remove-collection') && !e.target.classList.contains('rename-collection')) {
+                selectCollection(tab.dataset.collection);
+            }
+        });
+    });
+}
+
+// Update UI visibility based on whether a collection is selected
+function updateUIVisibility() {
+    const hasCollection = activeCollectionId !== null;
+    
+    channelTabsContainer.hidden = !hasCollection;
+    addChannelSection.hidden = !hasCollection;
+    catalogFilters.hidden = !hasCollection;
+    videosSection.hidden = !hasCollection;
+    shortsSection.hidden = !hasCollection || allShorts.length === 0;
+}
+
 // Render summary stats
 function renderSummaryStats() {
+    totalCollectionsEl.textContent = collections.length;
     totalChannelsEl.textContent = channels.length;
     totalVideosEl.textContent = allVideos.length;
     totalShortsEl.textContent = allShorts.length;

@@ -25,10 +25,19 @@ interface WebConfig {
 }
 
 const DEFAULT_CONFIG: WebConfig = {
-    videoLimit: 50,
+    videoLimit: 500,
     maxAgeDays: 30,
     minLengthSeconds: 0,
 };
+
+// Calculate video limit based on max age - roughly 1 video per day as a minimum
+function calculateVideoLimit(maxAgeDays: number, explicitLimit?: number): number {
+    if (explicitLimit !== undefined) return explicitLimit;
+    // For longer time periods, we need more videos
+    // Estimate roughly ~50 videos per month, with some buffer
+    const estimatedCount = Math.ceil(maxAgeDays / 30) * 100;
+    return Math.max(500, estimatedCount);
+}
 
 function getChannelUrls(channelIdentifier: string) {
     const isHandle = channelIdentifier.startsWith('@');
@@ -50,10 +59,17 @@ export async function processChannelForWeb(
     channelInput: string,
     config: Partial<WebConfig> = {}
 ): Promise<WebChannelData> {
-    const cfg = { ...DEFAULT_CONFIG, ...config };
+    const maxAgeDays = config.maxAgeDays ?? DEFAULT_CONFIG.maxAgeDays;
+    const videoLimit = calculateVideoLimit(maxAgeDays, config.videoLimit);
+    const cfg = { 
+        ...DEFAULT_CONFIG, 
+        ...config, 
+        maxAgeDays,
+        videoLimit 
+    };
     const { channelIdentifier, channelUrl, channelStreamsUrl, channelAboutUrl } = getChannelUrls(channelInput);
     
-    console.log(`📺 Processing channel: ${channelIdentifier}`);
+    console.log(`📺 Processing channel: ${channelIdentifier} (maxAge=${maxAgeDays} days, limit=${videoLimit} videos)`);
     
     // Fetch about page for channel details
     const aboutHtml = await fetchChannelPage(channelAboutUrl);

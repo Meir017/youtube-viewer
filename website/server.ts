@@ -12,20 +12,43 @@ interface StoredChannel {
     lastUpdated?: string;
 }
 
-interface ChannelsStore {
+interface Collection {
+    id: string;
+    name: string;
     channels: StoredChannel[];
+    createdAt: string;
+}
+
+interface ChannelsStore {
+    collections: Collection[];
+    // Legacy support
+    channels?: StoredChannel[];
 }
 
 async function loadStore(): Promise<ChannelsStore> {
     try {
         const file = Bun.file(DATA_FILE);
         if (await file.exists()) {
-            return await file.json();
+            const data = await file.json();
+            // Migrate legacy format (channels array) to collections
+            if (data.channels && !data.collections) {
+                const migratedStore: ChannelsStore = {
+                    collections: [{
+                        id: crypto.randomUUID(),
+                        name: 'Default',
+                        channels: data.channels,
+                        createdAt: new Date().toISOString(),
+                    }]
+                };
+                await saveStore(migratedStore);
+                return migratedStore;
+            }
+            return data;
         }
     } catch (e) {
         console.error('Error loading store:', e);
     }
-    return { channels: [] };
+    return { collections: [] };
 }
 
 async function saveStore(store: ChannelsStore): Promise<void> {
@@ -52,7 +75,7 @@ const server = Bun.serve({
             // CORS headers for API
             const corsHeaders = {
                 'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+                'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type',
             };
 
@@ -60,17 +83,109 @@ const server = Bun.serve({
                 return new Response(null, { headers: corsHeaders });
             }
 
-            // GET /api/channels - List all channels (optionally refresh with maxAgeDays)
-            if (path === '/api/channels' && req.method === 'GET') {
+            // ==================== COLLECTIONS API ====================
+            
+            // GET /api/collections - List all collections
+            if (path === '/api/collections' && req.method === 'GET') {
+                const store = await loadStore();
+                return Response.json(store.collections, { headers: corsHeaders });
+            }
+
+            // POST /api/collections - Create a new collection
+            if (path === '/api/collections' && req.method === 'POST') {
+                try {
+                    const body = await req.json() as { name: string };
+                    const name = body.name?.trim();
+                    
+                    if (!name) {
+                        return Response.json({ error: 'Name is required' }, { status: 400, headers: corsHeaders });
+                    }
+
+                    const store = await loadStore();
+                    
+                    const newCollection: Collection = {
+                        id: crypto.randomUUID(),
+                        name,
+                        channels: [],
+                        createdAt: new Date().toISOString(),
+                    };
+
+                    store.collections.push(newCollection);
+                    await saveStore(store);
+
+                    return Response.json(newCollection, { status: 201, headers: corsHeaders });
+                } catch (e: any) {
+                    console.error('Error creating collection:', e);
+                    return Response.json({ error: e.message || 'Failed to create collection' }, { status: 500, headers: corsHeaders });
+                }
+            }
+
+            // PUT /api/collections/:id - Update collection name
+            const updateCollectionMatch = path.match(/^\/api\/collections\/([^/]+)$/);
+            if (updateCollectionMatch && req.method === 'PUT') {
+                try {
+                    const id = updateCollectionMatch[1];
+                    const body = await req.json() as { name: string };
+                    const name = body.name?.trim();
+
+                    if (!name) {
+                        return Response.json({ error: 'Name is required' }, { status: 400, headers: corsHeaders });
+                    }
+
+                    const store = await loadStore();
+                    const collection = store.collections.find(c => c.id === id);
+                    
+                    if (!collection) {
+                        return Response.json({ error: 'Collection not found' }, { status: 404, headers: corsHeaders });
+                    }
+
+                    collection.name = name;
+                    await saveStore(store);
+
+                    return Response.json(collection, { headers: corsHeaders });
+                } catch (e: any) {
+                    console.error('Error updating collection:', e);
+                    return Response.json({ error: e.message || 'Failed to update collection' }, { status: 500, headers: corsHeaders });
+                }
+            }
+
+            // DELETE /api/collections/:id - Delete a collection
+            const deleteCollectionMatch = path.match(/^\/api\/collections\/([^/]+)$/);
+            if (deleteCollectionMatch && req.method === 'DELETE') {
+                const id = deleteCollectionMatch[1];
+                const store = await loadStore();
+                const index = store.collections.findIndex(c => c.id === id);
+                
+                if (index === -1) {
+                    return Response.json({ error: 'Collection not found' }, { status: 404, headers: corsHeaders });
+                }
+
+                store.collections.splice(index, 1);
+                await saveStore(store);
+
+                return Response.json({ success: true }, { headers: corsHeaders });
+            }
+
+            // ==================== CHANNELS WITHIN COLLECTIONS API ====================
+            
+            // GET /api/collections/:collectionId/channels - List channels in collection (optionally refresh with maxAgeDays)
+            const listChannelsMatch = path.match(/^\/api\/collections\/([^/]+)\/channels$/);
+            if (listChannelsMatch && req.method === 'GET') {
+                const collectionId = listChannelsMatch[1];
                 const maxAgeDaysParam = url.searchParams.get('maxAgeDays');
                 const store = await loadStore();
+                const collection = store.collections.find(c => c.id === collectionId);
+                
+                if (!collection) {
+                    return Response.json({ error: 'Collection not found' }, { status: 404, headers: corsHeaders });
+                }
                 
                 // If maxAgeDays is provided, refresh all channels with the new setting
                 if (maxAgeDaysParam) {
                     const maxAgeDays = parseInt(maxAgeDaysParam) || 30;
-                    console.log(`Refreshing all channels with maxAgeDays=${maxAgeDays}`);
+                    console.log(`Refreshing all channels in collection "${collection.name}" with maxAgeDays=${maxAgeDays}`);
                     
-                    for (const channel of store.channels) {
+                    for (const channel of collection.channels) {
                         try {
                             console.log(`  Refreshing: ${channel.handle}`);
                             const channelData = await processChannelForWeb(channel.handle, { maxAgeDays });
@@ -84,12 +199,14 @@ const server = Bun.serve({
                     await saveStore(store);
                 }
                 
-                return Response.json(store.channels, { headers: corsHeaders });
+                return Response.json(collection.channels, { headers: corsHeaders });
             }
 
-            // POST /api/channels - Add a new channel
-            if (path === '/api/channels' && req.method === 'POST') {
+            // POST /api/collections/:collectionId/channels - Add a channel to collection
+            const addChannelMatch = path.match(/^\/api\/collections\/([^/]+)\/channels$/);
+            if (addChannelMatch && req.method === 'POST') {
                 try {
+                    const collectionId = addChannelMatch[1];
                     const body = await req.json() as { handle: string };
                     let handle = body.handle?.trim();
                     
@@ -103,10 +220,15 @@ const server = Bun.serve({
                     }
 
                     const store = await loadStore();
+                    const collection = store.collections.find(c => c.id === collectionId);
                     
-                    // Check if already exists
-                    if (store.channels.some(c => c.handle.toLowerCase() === handle.toLowerCase())) {
-                        return Response.json({ error: 'Channel already exists' }, { status: 409, headers: corsHeaders });
+                    if (!collection) {
+                        return Response.json({ error: 'Collection not found' }, { status: 404, headers: corsHeaders });
+                    }
+                    
+                    // Check if already exists in this collection
+                    if (collection.channels.some(c => c.handle.toLowerCase() === handle.toLowerCase())) {
+                        return Response.json({ error: 'Channel already exists in this collection' }, { status: 409, headers: corsHeaders });
                     }
 
                     // Fetch channel data
@@ -121,7 +243,7 @@ const server = Bun.serve({
                         lastUpdated: new Date().toISOString(),
                     };
 
-                    store.channels.push(newChannel);
+                    collection.channels.push(newChannel);
                     await saveStore(store);
 
                     return Response.json(newChannel, { status: 201, headers: corsHeaders });
@@ -131,29 +253,43 @@ const server = Bun.serve({
                 }
             }
 
-            // DELETE /api/channels/:id - Remove a channel
-            const deleteMatch = path.match(/^\/api\/channels\/([^/]+)$/);
-            if (deleteMatch && req.method === 'DELETE') {
-                const id = deleteMatch[1];
+            // DELETE /api/collections/:collectionId/channels/:channelId - Remove a channel from collection
+            const deleteChannelMatch = path.match(/^\/api\/collections\/([^/]+)\/channels\/([^/]+)$/);
+            if (deleteChannelMatch && req.method === 'DELETE') {
+                const collectionId = deleteChannelMatch[1];
+                const channelId = deleteChannelMatch[2];
                 const store = await loadStore();
-                const index = store.channels.findIndex(c => c.id === id);
+                const collection = store.collections.find(c => c.id === collectionId);
+                
+                if (!collection) {
+                    return Response.json({ error: 'Collection not found' }, { status: 404, headers: corsHeaders });
+                }
+                
+                const index = collection.channels.findIndex(c => c.id === channelId);
                 
                 if (index === -1) {
                     return Response.json({ error: 'Channel not found' }, { status: 404, headers: corsHeaders });
                 }
 
-                store.channels.splice(index, 1);
+                collection.channels.splice(index, 1);
                 await saveStore(store);
 
                 return Response.json({ success: true }, { headers: corsHeaders });
             }
 
-            // POST /api/channels/:id/refresh - Refresh channel data
-            const refreshMatch = path.match(/^\/api\/channels\/([^/]+)\/refresh$/);
-            if (refreshMatch && req.method === 'POST') {
-                const id = refreshMatch[1];
+            // POST /api/collections/:collectionId/channels/:channelId/refresh - Refresh channel data
+            const refreshChannelMatch = path.match(/^\/api\/collections\/([^/]+)\/channels\/([^/]+)\/refresh$/);
+            if (refreshChannelMatch && req.method === 'POST') {
+                const collectionId = refreshChannelMatch[1];
+                const channelId = refreshChannelMatch[2];
                 const store = await loadStore();
-                const channel = store.channels.find(c => c.id === id);
+                const collection = store.collections.find(c => c.id === collectionId);
+                
+                if (!collection) {
+                    return Response.json({ error: 'Collection not found' }, { status: 404, headers: corsHeaders });
+                }
+                
+                const channel = collection.channels.find(c => c.id === channelId);
                 
                 if (!channel) {
                     return Response.json({ error: 'Channel not found' }, { status: 404, headers: corsHeaders });

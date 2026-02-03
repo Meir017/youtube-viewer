@@ -13,6 +13,10 @@
             <h1 class="multi-channel-title">📺 YouTube Channel Viewer</h1>
             <div class="multi-channel-summary" id="summaryStats">
                 <div class="summary-stat">
+                    <div class="summary-stat-label">&#128193; Collections</div>
+                    <div class="summary-stat-value" id="totalCollections">0</div>
+                </div>
+                <div class="summary-stat">
                     <div class="summary-stat-label">📺 Channels</div>
                     <div class="summary-stat-value" id="totalChannels">0</div>
                 </div>
@@ -26,8 +30,45 @@
                 </div>
             </div>
             
-            <!-- Add Channel Form -->
-            <div class="add-channel-inline">
+            <!-- Collection Tabs (top level) -->
+            <div class="collection-tabs-container">
+                <div class="collection-tabs" id="collectionTabs">
+                    <!-- Collection tabs will be rendered here -->
+                </div>
+                <button class="add-collection-btn" id="addCollectionBtn" title="Add new collection">+ New Collection</button>
+            </div>
+
+            <!-- Add Collection Modal -->
+            <div id="addCollectionModal" class="modal" hidden>
+                <div class="modal-content">
+                    <h3>Create New Collection</h3>
+                    <form id="addCollectionForm">
+                        <input type="text" id="collectionNameInput" placeholder="Collection name (e.g., Tech, Music)" required>
+                        <div class="modal-buttons">
+                            <button type="button" class="cancel-btn" id="cancelCollectionBtn">Cancel</button>
+                            <button type="submit" class="submit-btn">Create</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Rename Collection Modal -->
+            <div id="renameCollectionModal" class="modal" hidden>
+                <div class="modal-content">
+                    <h3>Rename Collection</h3>
+                    <form id="renameCollectionForm">
+                        <input type="text" id="renameCollectionInput" placeholder="New collection name" required>
+                        <input type="hidden" id="renameCollectionId">
+                        <div class="modal-buttons">
+                            <button type="button" class="cancel-btn" id="cancelRenameBtn">Cancel</button>
+                            <button type="submit" class="submit-btn">Rename</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- Add Channel Form (shows when a collection is selected) -->
+            <div class="add-channel-inline" id="addChannelSection" hidden>
                 <form id="addChannelForm" class="add-form-inline">
                     <input 
                         type="text" 
@@ -45,7 +86,7 @@
             <div id="errorMessage" class="error-message" hidden></div>
             
             <!-- Catalog Filters -->
-            <div class="catalog-filters">
+            <div class="catalog-filters" id="catalogFilters" hidden>
                 <div class="filter-group">
                     <label for="maxAgeInput">📅 Max Age</label>
                     <input type="number" id="maxAgeInput" min="0" placeholder="30" value="30">
@@ -64,13 +105,15 @@
                 </div>
             </div>
             
-            <!-- Channel Tabs -->
-            <div class="channel-tabs" id="channelTabs">
-                <button class="channel-tab active" data-channel="all">
-                    <span class="channel-dot"></span>
-                    All Channels
-                </button>
-                <!-- Channel tabs will be rendered here -->
+            <!-- Channel Tabs (within selected collection) -->
+            <div class="channel-tabs-container" id="channelTabsContainer" hidden>
+                <div class="channel-tabs" id="channelTabs">
+                    <button class="channel-tab active" data-channel="all">
+                        <span class="channel-dot"></span>
+                        All Channels
+                    </button>
+                    <!-- Channel tabs will be rendered here -->
+                </div>
             </div>
         </header>
 
