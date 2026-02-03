@@ -86,15 +86,44 @@ bun run generator/youtube.ts --channel=@channelhandle --shorts-limit=50 --html -
 bun run generator/youtube.ts --channel=@GitHub --enrich --enrich-concurrency=2 --html
 ```
 
+## Interactive Website
+
+In addition to the CLI, you can run an interactive website to add and browse YouTube channels.
+
+### Start the Web Server
+
+```bash
+bun run web
+```
+
+Then open http://localhost:3000 in your browser.
+
+### Website Features
+
+- **Add channels** by entering their handle (e.g., `@GitHub`)
+- **Browse videos** in a grid layout with thumbnails
+- **Refresh channel data** to get the latest videos
+- **Remove channels** you no longer want to follow
+- **Persistent storage** - your channels are saved between sessions
+
 ## Project Structure
 
 ```
 youtube-viewer/
 ├── generator/
-│   ├── youtube.ts          # Main CLI script (TypeScript)
-│   ├── tech.ps1            # Tech channels preset
-│   ├── movies.ps1          # Movies channels preset
-│   └── tech-podcasts.ps1   # Tech podcasts preset
+│   ├── index.ts            # Main CLI script (TypeScript)
+│   ├── api.ts              # YouTube API functions
+│   ├── parsers.ts          # Data extraction utilities
+│   ├── html-generator.ts   # HTML page generator
+│   └── ...                 # Other generator modules
+├── website/
+│   ├── server.ts           # Bun HTTP server
+│   ├── channel-processor.ts # Channel fetching for web
+│   ├── public/             # Static frontend files
+│   │   ├── index.html
+│   │   ├── styles.css
+│   │   └── app.js
+│   └── data/               # Channel storage
 ├── package.json            # Bun project configuration
 ├── tsconfig.json           # TypeScript configuration
 ├── LICENSE
