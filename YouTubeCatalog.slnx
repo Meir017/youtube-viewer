@@ -1,7 +1,0 @@
-<Solution>
-  <Project Path="YouTubeCatalog.Api/YouTubeCatalog.Api.csproj" />
-  <Project Path="YouTubeCatalog.Cli/YouTubeCatalog.Cli.csproj" />
-  <Project Path="YouTubeCatalog.Core/YouTubeCatalog.Core.csproj" />
-  <Project Path="YouTubeCatalog.Tests/YouTubeCatalog.Tests.csproj" />
-  <Project Path="YouTubeCatalog.UI/YouTubeCatalog.UI.csproj" />
-</Solution>
