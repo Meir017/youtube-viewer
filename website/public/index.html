@@ -8,32 +8,131 @@
 </head>
 <body>
     <div class="container">
-        <header class="app-header">
-            <h1>📺 YouTube Channel Viewer</h1>
-            <p class="subtitle">Add your favorite channels and browse their videos</p>
+        <!-- Header with Stats -->
+        <header class="multi-channel-header">
+            <h1 class="multi-channel-title">📺 YouTube Channel Viewer</h1>
+            <div class="multi-channel-summary" id="summaryStats">
+                <div class="summary-stat">
+                    <div class="summary-stat-label">📺 Channels</div>
+                    <div class="summary-stat-value" id="totalChannels">0</div>
+                </div>
+                <div class="summary-stat">
+                    <div class="summary-stat-label">🎬 Videos</div>
+                    <div class="summary-stat-value" id="totalVideos">0</div>
+                </div>
+                <div class="summary-stat" id="shortsStatContainer" hidden>
+                    <div class="summary-stat-label">📱 Shorts</div>
+                    <div class="summary-stat-value" id="totalShorts">0</div>
+                </div>
+            </div>
+            
+            <!-- Add Channel Form -->
+            <div class="add-channel-inline">
+                <form id="addChannelForm" class="add-form-inline">
+                    <input 
+                        type="text" 
+                        id="channelInput" 
+                        placeholder="Add channel (e.g., @GitHub)" 
+                        autocomplete="off"
+                        required
+                    >
+                    <button type="submit" id="addBtn">
+                        <span class="btn-text">+ Add</span>
+                        <span class="btn-loading" hidden>...</span>
+                    </button>
+                </form>
+            </div>
+            <div id="errorMessage" class="error-message" hidden></div>
+            
+            <!-- Catalog Filters -->
+            <div class="catalog-filters">
+                <div class="filter-group">
+                    <label for="maxAgeInput">📅 Max Age</label>
+                    <input type="number" id="maxAgeInput" min="0" placeholder="30" value="30">
+                    <span class="filter-unit">days</span>
+                    <button id="applyMaxAgeBtn" class="apply-btn" title="Reload catalog with new max age">Apply</button>
+                </div>
+                <div class="filter-group">
+                    <label for="minDurationInput">⏱️ Min Duration</label>
+                    <input type="number" id="minDurationInput" min="0" placeholder="0" value="0">
+                    <span class="filter-unit">min</span>
+                </div>
+                <div class="filter-group">
+                    <label for="maxDurationInput">⏱️ Max Duration</label>
+                    <input type="number" id="maxDurationInput" min="0" placeholder="∞">
+                    <span class="filter-unit">min</span>
+                </div>
+            </div>
+            
+            <!-- Channel Tabs -->
+            <div class="channel-tabs" id="channelTabs">
+                <button class="channel-tab active" data-channel="all">
+                    <span class="channel-dot"></span>
+                    All Channels
+                </button>
+                <!-- Channel tabs will be rendered here -->
+            </div>
         </header>
 
-        <div class="add-channel-section">
-            <form id="addChannelForm" class="add-form">
-                <input 
-                    type="text" 
-                    id="channelInput" 
-                    placeholder="Enter channel handle (e.g., @GitHub)" 
-                    autocomplete="off"
-                    required
-                >
-                <button type="submit" id="addBtn">
-                    <span class="btn-text">Add Channel</span>
-                    <span class="btn-loading" hidden>Adding...</span>
-                </button>
-            </form>
-            <div id="errorMessage" class="error-message" hidden></div>
-        </div>
+        <!-- Videos Section -->
+        <section class="videos-section" id="videosSection">
+            <h2 class="section-title">
+                🎬 Videos
+                <span class="section-count" id="videoCount">0</span>
+            </h2>
+            
+            <div class="controls">
+                <input type="text" class="search-box" placeholder="🔍 Search videos..." id="searchBox">
+                <div class="sort-buttons">
+                    <button class="sort-btn active" data-sort="default" data-order="desc">
+                        <span>Default</span>
+                    </button>
+                    <button class="sort-btn" data-sort="views" data-order="desc">
+                        <span>👁️ Views</span>
+                        <span class="sort-icon">▼</span>
+                    </button>
+                    <button class="sort-btn" data-sort="date" data-order="desc">
+                        <span>📅 Date</span>
+                        <span class="sort-icon">▼</span>
+                    </button>
+                    <button class="sort-btn" data-sort="duration" data-order="desc">
+                        <span>⏱️ Duration</span>
+                        <span class="sort-icon">▼</span>
+                    </button>
+                    <button class="sort-btn" data-sort="title" data-order="asc">
+                        <span>🔤 Title</span>
+                        <span class="sort-icon">▲</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="videos-grid" id="videosGrid">
+                <!-- Videos will be rendered here -->
+            </div>
+        </section>
 
-        <div id="channelList" class="channel-list">
-            <!-- Channels will be rendered here -->
-        </div>
+        <!-- Shorts Section -->
+        <section class="shorts-section" id="shortsSection" hidden>
+            <h2 class="section-title">
+                📱 Shorts
+                <span class="section-count shorts" id="shortsCount">0</span>
+            </h2>
+            
+            <div class="controls">
+                <input type="text" class="search-box" placeholder="🔍 Search shorts..." id="searchBoxShorts">
+            </div>
+            
+            <div class="shorts-grid" id="shortsGrid">
+                <!-- Shorts will be rendered here -->
+            </div>
+        </section>
 
+        <!-- Footer -->
+        <footer class="footer" id="footer">
+            <p>Data fetched from YouTube</p>
+        </footer>
+
+        <!-- Loading Overlay -->
         <div id="loadingOverlay" class="loading-overlay" hidden>
             <div class="loading-spinner"></div>
             <p>Loading channels...</p>
