@@ -1,0 +1,1 @@
+node .\generator\youtube.js '--channel=@GitHub,@code,@MicrosoftDeveloper,@dotnet,@GoogleDevelopers,@shanselman,@nickchapsas,@anthropic-ai,@openai' --html --output=tech.html --max-age=30 --limit=500
