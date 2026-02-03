@@ -3,8 +3,20 @@ import type { ChannelUrls } from './types';
 // Parse CLI arguments
 const args = Bun.argv.slice(2);
 
-export const GENERATE_HTML = args.includes('--html');
-export const OUTPUT_FILE = args.find(a => a.startsWith('--output='))?.split('=')[1] || 'channel.html';
+// Output format: 'html', 'json', or 'console' (default)
+const CLI_FORMAT = args.find(a => a.startsWith('--format='))?.split('=')[1]?.toLowerCase();
+const hasLegacyHtmlFlag = args.includes('--html');
+
+export type OutputFormat = 'html' | 'json' | 'console';
+export const OUTPUT_FORMAT: OutputFormat = CLI_FORMAT === 'html' || CLI_FORMAT === 'json' 
+    ? CLI_FORMAT 
+    : (hasLegacyHtmlFlag ? 'html' : 'console');
+
+// Keep for backward compatibility
+export const GENERATE_HTML = OUTPUT_FORMAT === 'html';
+
+const defaultOutputFile = OUTPUT_FORMAT === 'json' ? 'channels.json' : 'channel.html';
+export const OUTPUT_FILE = args.find(a => a.startsWith('--output='))?.split('=')[1] || defaultOutputFile;
 const CLI_LIMIT = args.find(a => a.startsWith('--limit='))?.split('=')[1];
 const CLI_MAX_AGE = args.find(a => a.startsWith('--max-age='))?.split('=')[1];
 const CLI_SHORTS_LIMIT = args.find(a => a.startsWith('--shorts-limit='))?.split('=')[1];

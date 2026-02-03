@@ -9,6 +9,7 @@ import {
     MAX_CONCURRENT_CHANNELS,
     GENERATE_HTML,
     OUTPUT_FILE,
+    OUTPUT_FORMAT,
     ENRICH_VIDEOS,
     ENRICH_CONCURRENCY,
     ENRICH_DELAY_MS,
@@ -309,6 +310,40 @@ async function processChannelsInParallel(channels: string[], concurrencyLimit: n
     return results.map(({ channel, videos }) => ({ channel, videos }));
 }
 
+interface StoredChannel {
+    id: string;
+    handle: string;
+    addedAt: string;
+    data?: {
+        channel: ChannelData['channel'];
+        videos: ChannelData['videos'];
+    };
+    lastUpdated?: string;
+}
+
+interface ChannelsStore {
+    channels: StoredChannel[];
+}
+
+async function generateChannelsJson(channelData: ChannelData[], outputPath: string): Promise<void> {
+    const now = new Date().toISOString();
+    
+    const store: ChannelsStore = {
+        channels: channelData.map(data => ({
+            id: crypto.randomUUID(),
+            handle: data.channel.vanityUrl?.replace('/', '') || data.channel.title || 'unknown',
+            addedAt: now,
+            data: {
+                channel: data.channel,
+                videos: data.videos,
+            },
+            lastUpdated: now,
+        })),
+    };
+    
+    await Bun.write(outputPath, JSON.stringify(store, null, 2));
+}
+
 async function main(): Promise<void> {
     try {
         log.header('🔄 FETCHING CHANNEL DATA');
@@ -319,6 +354,7 @@ async function main(): Promise<void> {
         log.info(`Min length: ${MIN_VIDEO_LENGTH_SECONDS === 0 ? 'disabled' : MIN_VIDEO_LENGTH_SECONDS + ' seconds'}`);
         log.info(`Shorts limit: ${SHORTS_LIMIT === 0 ? 'disabled' : SHORTS_LIMIT + ' per channel'}`);
         log.info(`Enrich videos: ${ENRICH_VIDEOS ? `enabled (concurrency: ${ENRICH_CONCURRENCY}, delay: ${ENRICH_DELAY_MS}ms)` : 'disabled'}`);
+        log.info(`Output format: ${OUTPUT_FORMAT}${OUTPUT_FORMAT !== 'console' ? ` (${OUTPUT_FILE})` : ''}`);
         
         const allChannelData = await processChannelsInParallel(channelIds, MAX_CONCURRENT_CHANNELS);
 
@@ -336,12 +372,18 @@ async function main(): Promise<void> {
         if (totalShorts > 0) log.info(`Shorts: ${totalShorts}`);
         log.success(`Total content: ${totalVideos + totalShorts}`);
 
-        if (GENERATE_HTML) {
+        if (OUTPUT_FORMAT === 'html') {
             log.header('📄 GENERATING HTML PAGE');
             const { resolve } = await import('path');
             const outputPath = resolve(process.cwd(), OUTPUT_FILE);
             const filePath = await generateHtmlPage(allChannelData, outputPath);
             log.success(`HTML page generated: ${filePath}`);
+        } else if (OUTPUT_FORMAT === 'json') {
+            log.header('📄 GENERATING CHANNELS JSON');
+            const { resolve } = await import('path');
+            const outputPath = resolve(process.cwd(), OUTPUT_FILE);
+            await generateChannelsJson(allChannelData, outputPath);
+            log.success(`JSON file generated: ${outputPath}`);
         } else {
             console.log(JSON.stringify(allChannelData, null, 2));
         }
