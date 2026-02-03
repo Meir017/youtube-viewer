@@ -1,1 +1,1 @@
-node .\generator\youtube.js '--channel=@lexfriedman,@Alex.kantrowitz,@DwarkeshPatel,@CleoAbram,@DecoderPod,@Github,@openai,@anthropic-ai,@stripe,@Meter-Network' --html --output=tech-podcasts.html --max-age=730 --limit=500 --min-length=1800 --enrich --enrich-concurrency=10
+node .\generator\youtube.js '--channel=@lexfriedman,@Alex.kantrowitz,@DwarkeshPatel,@CleoAbram,@DecoderPod,@Github,@openai,@anthropic-ai,@stripe,@Meter-Network' --html --output=dist\tech-podcasts.html --max-age=730 --limit=500 --min-length=1800 --enrich --enrich-concurrency=10
