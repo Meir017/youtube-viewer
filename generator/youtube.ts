@@ -1,9 +1,106 @@
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+
+// TypeScript interfaces
+interface ChannelUrls {
+    channelIdentifier: string;
+    isHandle: boolean;
+    channelUrl: string;
+    channelShortsUrl: string;
+    channelStreamsUrl: string;
+    channelAboutUrl: string;
+}
+
+interface Video {
+    videoId: string;
+    title?: string;
+    viewCount?: string;
+    publishedTime?: string;
+    duration?: string;
+    isShort?: boolean;
+    isStream?: boolean;
+    publishDate?: string;
+    description?: string;
+    channelTitle?: string;
+    channelIndex?: number;
+}
+
+interface Short {
+    videoId: string;
+    title?: string;
+    viewCount?: string;
+    isShort: true;
+}
+
+interface ChannelDetails {
+    title?: string;
+    description?: string;
+    vanityUrl?: string;
+    channelUrl?: string;
+    externalId?: string;
+    keywords?: string;
+    avatar?: string;
+    banner?: string;
+    subscriberCount?: string | null;
+    videoCount?: string | null;
+    viewCount?: string | null;
+    joinDate?: string | null;
+    country?: string | null;
+    links: ChannelLink[];
+    aboutContinuationToken?: string | null;
+    familyFriendly?: boolean;
+    tags?: string[];
+}
+
+interface ChannelLink {
+    title?: string;
+    url?: string;
+}
+
+interface ChannelData {
+    channel: ChannelDetails;
+    videos: Video[];
+    originalIndex?: number;
+}
+
+interface ExtendedDetails {
+    viewCount: string | null;
+    joinDate: string | null;
+    country: string | null;
+    links: ChannelLink[];
+}
+
+interface VideosTabResult {
+    videos: Video[];
+    continuationToken: string | null;
+    tabTitle?: string | null;
+}
+
+interface ShortsTabResult {
+    shorts: Short[];
+    continuationToken: string | null;
+}
+
+interface BrowseVideosResult {
+    videos: Video[];
+    rawItemCount: number;
+    nextContinuationToken: string | null;
+}
+
+interface BrowseShortsResult {
+    shorts: Short[];
+    rawItemCount: number;
+    nextContinuationToken: string | null;
+}
+
+interface VideoDetails {
+    publishDate: string | null;
+    description: string | null;
+}
 
 // Parse CLI arguments
-const args = process.argv.slice(2);
+const args = Bun.argv.slice(2);
 const GENERATE_HTML = args.includes('--html');
 const OUTPUT_FILE = args.find(a => a.startsWith('--output='))?.split('=')[1] || 'channel.html';
 const CLI_LIMIT = args.find(a => a.startsWith('--limit='))?.split('=')[1];
@@ -27,7 +124,7 @@ const channelIds = channelArgs.length > 0
 const browseApiUrl = 'https://www.youtube.com/youtubei/v1/browse?prettyPrint=false';
 
 // Helper to build channel URLs (supports both channel IDs and handles)
-const getChannelUrls = (channelIdentifier) => {
+const getChannelUrls = (channelIdentifier: string): ChannelUrls => {
     const isHandle = channelIdentifier.startsWith('@');
     const baseUrl = isHandle
         ? `https://www.youtube.com/${channelIdentifier}`
@@ -74,15 +171,15 @@ const colors = {
 };
 
 const log = {
-    info: (msg) => console.log(`${colors.cyan}ℹ️  ${msg}${colors.reset}`),
-    success: (msg) => console.log(`${colors.green}✅ ${msg}${colors.reset}`),
-    warn: (msg) => console.log(`${colors.yellow}⚠️  ${msg}${colors.reset}`),
-    error: (msg) => console.log(`${colors.red}❌ ${msg}${colors.reset}`),
-    fetch: (msg) => console.log(`${colors.blue}🌐 ${msg}${colors.reset}`),
-    parse: (msg) => console.log(`${colors.magenta}🔍 ${msg}${colors.reset}`),
-    video: (msg) => console.log(`${colors.white}🎬 ${msg}${colors.reset}`),
-    header: (msg) => console.log(`\n${colors.bright}${colors.bgBlue} ${msg} ${colors.reset}\n`),
-    detail: (label, value) => console.log(`   ${colors.dim}${label}:${colors.reset} ${value}`),
+    info: (msg: string) => console.log(`${colors.cyan}ℹ️  ${msg}${colors.reset}`),
+    success: (msg: string) => console.log(`${colors.green}✅ ${msg}${colors.reset}`),
+    warn: (msg: string) => console.log(`${colors.yellow}⚠️  ${msg}${colors.reset}`),
+    error: (msg: string) => console.log(`${colors.red}❌ ${msg}${colors.reset}`),
+    fetch: (msg: string) => console.log(`${colors.blue}🌐 ${msg}${colors.reset}`),
+    parse: (msg: string) => console.log(`${colors.magenta}🔍 ${msg}${colors.reset}`),
+    video: (msg: string) => console.log(`${colors.white}🎬 ${msg}${colors.reset}`),
+    header: (msg: string) => console.log(`\n${colors.bright}${colors.bgBlue} ${msg} ${colors.reset}\n`),
+    detail: (label: string, value: string) => console.log(`   ${colors.dim}${label}:${colors.reset} ${value}`),
 };
 
 const CLIENT_CONTEXT = {
@@ -91,19 +188,14 @@ const CLIENT_CONTEXT = {
     acceptHeader: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
 };
 
-/**
- * Parse relative time string (e.g., "2 days ago", "3 months ago") into approximate days
- * @param {string} timeStr - Relative time string from YouTube
- * @returns {number} - Approximate age in days (Infinity if unparseable)
- */
-function parseRelativeTimeTodays(timeStr) {
-    if (!timeStr) return 0; // Assume recent if no time provided
+function parseRelativeTimeTodays(timeStr: string | undefined): number {
+    if (!timeStr) return 0;
     const str = timeStr.toLowerCase();
     const match = str.match(/(\d+)\s*(second|minute|hour|day|week|month|year)s?/);
     if (!match) return 0;
     const num = parseInt(match[1], 10);
     const unit = match[2];
-    const daysMultiplier = {
+    const daysMultiplier: Record<string, number> = {
         second: 1 / 86400,
         minute: 1 / 1440,
         hour: 1 / 24,
@@ -115,39 +207,22 @@ function parseRelativeTimeTodays(timeStr) {
     return num * (daysMultiplier[unit] || 0);
 }
 
-/**
- * Check if a stream is upcoming/scheduled (not yet live or past)
- * @param {string} publishedTime - Time string from YouTube
- * @returns {boolean} - True if stream is scheduled for the future
- */
-function isUpcomingStream(publishedTime) {
-    // No date means it's likely upcoming/scheduled
+function isUpcomingStream(publishedTime: string | undefined): boolean {
     if (!publishedTime) return true;
     const lower = publishedTime.toLowerCase();
-    // Patterns indicating future/scheduled streams
     return lower.includes('scheduled') || 
            lower.includes('premieres') || 
            lower.includes('waiting') ||
            lower.includes('upcoming');
 }
 
-/**
- * Check if a video is too old based on MAX_VIDEO_AGE_DAYS
- * @param {string} publishedTime - Relative time string
- * @returns {boolean} - True if video exceeds age limit
- */
-function isVideoTooOld(publishedTime) {
+function isVideoTooOld(publishedTime: string | undefined): boolean {
     if (MAX_VIDEO_AGE_DAYS === Infinity) return false;
     const ageDays = parseRelativeTimeTodays(publishedTime);
     return ageDays > MAX_VIDEO_AGE_DAYS;
 }
 
-/**
- * Parse duration string (e.g., "1:23:45", "12:34", "0:59") to seconds
- * @param {string} durationStr - Duration string from YouTube
- * @returns {number} - Duration in seconds (0 if unparseable)
- */
-function parseDurationToSeconds(durationStr) {
+function parseDurationToSeconds(durationStr: string | undefined): number {
     if (!durationStr) return 0;
     const parts = durationStr.split(':').map(Number);
     if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
@@ -155,37 +230,24 @@ function parseDurationToSeconds(durationStr) {
     return parts[0] || 0;
 }
 
-/**
- * Check if a video is too short based on MIN_VIDEO_LENGTH_SECONDS
- * @param {string} duration - Duration string from YouTube
- * @returns {boolean} - True if video is shorter than minimum length
- */
-function isVideoTooShort(duration) {
+function isVideoTooShort(duration: string | undefined): boolean {
     if (MIN_VIDEO_LENGTH_SECONDS === 0) return false;
     const durationSeconds = parseDurationToSeconds(duration);
     return durationSeconds < MIN_VIDEO_LENGTH_SECONDS;
 }
 
-/**
- * Detect if a video renderer represents a YouTube Short
- * @param {object} renderer - The video renderer object
- * @returns {boolean} - True if the video is a Short
- */
-function isVideoShort(renderer) {
+function isVideoShort(renderer: any): boolean {
     if (!renderer) return false;
     
-    // Check 1: Navigation endpoint contains /shorts/
     const navEndpoint = renderer.navigationEndpoint?.commandMetadata?.webCommandMetadata?.url || '';
     if (navEndpoint.includes('/shorts/')) return true;
     
-    // Check 2: Overlay badges (e.g., "SHORTS" badge)
     const overlayBadges = renderer.thumbnailOverlays || [];
     for (const overlay of overlayBadges) {
         const style = overlay.thumbnailOverlayTimeStatusRenderer?.style;
         if (style === 'SHORTS') return true;
     }
     
-    // Check 3: Icon type in overlay indicates shorts
     for (const overlay of overlayBadges) {
         const iconType = overlay.thumbnailOverlayTimeStatusRenderer?.icon?.iconType;
         if (iconType === 'SHORTS') return true;
@@ -194,12 +256,7 @@ function isVideoShort(renderer) {
     return false;
 }
 
-/**
- * Extract video data from a renderer, detecting if it's a Short
- * @param {object} renderer - The video renderer object
- * @returns {object} - Video object with isShort flag
- */
-function extractVideoFromRenderer(renderer) {
+function extractVideoFromRenderer(renderer: any): Video {
     return {
         videoId: renderer.videoId,
         title: renderer.title?.runs?.[0]?.text || renderer.title?.simpleText,
@@ -210,11 +267,7 @@ function extractVideoFromRenderer(renderer) {
     };
 }
 
-/**
- * Fetch the initial channel page HTML
- * @param {string} url
- */
-async function fetchChannelPage(url) {
+async function fetchChannelPage(url: string): Promise<string> {
     log.fetch(`Requesting page: ${url}`);
     const response = await fetch(url);
     if (!response.ok) {
@@ -225,12 +278,7 @@ async function fetchChannelPage(url) {
     return html;
 }
 
-/**
- * Fetch additional data using the YouTube browse API
- * @param {string} continuation - Continuation token
- * @param {string} channelUrl - Channel URL for context
- */
-async function fetchBrowseData(continuation, channelUrl) {
+async function fetchBrowseData(continuation: string, channelUrl: string): Promise<any> {
     log.fetch(`Fetching more data via Browse API...`);
     
     const payload = {
@@ -268,12 +316,7 @@ async function fetchBrowseData(continuation, channelUrl) {
     return data;
 }
 
-/**
- * Fetch video watch page and extract detailed information
- * @param {string} videoId - YouTube video ID
- * @returns {object} - Video details (publishDate, description)
- */
-async function fetchVideoDetails(videoId) {
+async function fetchVideoDetails(videoId: string): Promise<VideoDetails> {
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     const response = await fetch(url, {
         headers: {
@@ -289,13 +332,11 @@ async function fetchVideoDetails(videoId) {
     
     const html = await response.text();
     
-    // Extract ytInitialData from watch page
     const match = html.match(/ytInitialData\s*=\s*(\{.+?\});/s);
     if (!match) {
         throw new Error('Could not find ytInitialData in response');
     }
     
-    // Find balanced JSON
     const startIndex = html.indexOf(match[0]) + match[0].indexOf('{');
     let braceCount = 0;
     let endIndex = startIndex;
@@ -313,22 +354,19 @@ async function fetchVideoDetails(videoId) {
     const json = html.substring(startIndex, endIndex);
     const data = JSON.parse(json);
     
-    // Extract publish date from dateText
     const contents = data?.contents?.twoColumnWatchNextResults?.results?.results?.contents || [];
-    let publishDate = null;
-    let description = null;
+    let publishDate: string | null = null;
+    let description: string | null = null;
     
     for (const content of contents) {
         const primaryInfo = content.videoPrimaryInfoRenderer;
         const secondaryInfo = content.videoSecondaryInfoRenderer;
         
         if (primaryInfo) {
-            // Get publish date (e.g., "Dec 22, 2025")
             publishDate = primaryInfo.dateText?.simpleText;
         }
         
         if (secondaryInfo) {
-            // Get description from attributedDescription
             const attrDesc = secondaryInfo.attributedDescription;
             if (attrDesc?.content) {
                 description = attrDesc.content;
@@ -339,14 +377,7 @@ async function fetchVideoDetails(videoId) {
     return { publishDate, description };
 }
 
-/**
- * Enrich videos with detailed information (publish date, description)
- * @param {object[]} videos - Array of video objects
- * @param {number} concurrency - Maximum concurrent requests
- * @returns {object[]} - Enriched video array
- */
-async function enrichVideosWithDetails(videos, concurrency) {
-    // Only enrich regular videos, not shorts
+async function enrichVideosWithDetails(videos: Video[], concurrency: number): Promise<Video[]> {
     const videosToEnrich = videos.filter(v => !v.isShort);
     const shortsToKeep = videos.filter(v => v.isShort);
     
@@ -361,45 +392,39 @@ async function enrichVideosWithDetails(videos, concurrency) {
     let failed = 0;
     let rateLimited = 0;
     
-    // Process in batches
-    async function processVideo(video) {
+    async function processVideo(video: Video): Promise<void> {
         try {
             const details = await fetchVideoDetails(video.videoId);
-            video.publishDate = details.publishDate;
-            video.description = details.description;
+            video.publishDate = details.publishDate ?? undefined;
+            video.description = details.description ?? undefined;
             completed++;
             
-            // Progress update every 10 videos or at the end
             if (completed % 10 === 0 || completed === videosToEnrich.length) {
                 log.info(`Progress: ${completed}/${videosToEnrich.length} videos enriched${failed > 0 ? ` (${failed} failed)` : ''}`);
             }
-        } catch (err) {
+        } catch (err: any) {
             failed++;
             if (err.message.includes('429')) {
                 rateLimited++;
-                // Only log first rate limit hit
                 if (rateLimited === 1) {
                     log.warn(`Rate limited (429) - YouTube is throttling requests. Remaining videos will fail.`);
                 }
             } else if (failed <= 3) {
                 log.warn(`Enrich failed for ${video.videoId}: ${err.message}`);
             }
-            // Keep original video data, just without enrichment
         }
     }
     
-    // Worker pool for concurrency control
     let nextIndex = 0;
-    async function worker() {
+    async function worker(): Promise<void> {
         while (nextIndex < videosToEnrich.length) {
             const index = nextIndex++;
             await processVideo(videosToEnrich[index]);
-            // Delay between requests to avoid rate limiting
             await new Promise(r => setTimeout(r, ENRICH_DELAY_MS));
         }
     }
     
-    const workers = [];
+    const workers: Promise<void>[] = [];
     const workerCount = Math.min(concurrency, videosToEnrich.length);
     for (let i = 0; i < workerCount; i++) {
         workers.push(worker());
@@ -417,15 +442,12 @@ async function enrichVideosWithDetails(videos, concurrency) {
     return [...videosToEnrich, ...shortsToKeep];
 }
 
-/** @param {string} html */
-function extractYtInitialData(html) {
-    // Try format 1: ytInitialData = {...} (direct JSON object)
+function extractYtInitialData(html: string): any {
     let match = html.match(/ytInitialData\s*=\s*(\{.+?\});/s);
     
     if (match) {
         log.parse('Using format 1: Direct JSON object (ytInitialData = {...})');
         
-        // Find the balanced JSON by counting braces
         const startIndex = html.indexOf(match[0]) + match[0].indexOf('{');
         let braceCount = 0;
         let endIndex = startIndex;
@@ -445,13 +467,11 @@ function extractYtInitialData(html) {
         return JSON.parse(json);
     }
     
-    // Try format 2: ytInitialData = '...' (escaped string, older format)
     match = html.match(/var\s+ytInitialData\s*=\s*'(.+?)';/);
     if (match) {
         log.parse('Using format 2: Escaped string (var ytInitialData = \'...\')');
         
         const escapedJson = match[1];
-        // Unescape \xNN hex sequences
         const json = escapedJson.replace(/\\x([0-9A-Fa-f]{2})/g, (_, hex) => {
             return String.fromCharCode(parseInt(hex, 16));
         });
@@ -462,12 +482,7 @@ function extractYtInitialData(html) {
     throw new Error('Could not find ytInitialData in the response');
 }
 
-/**
- * Recursively find continuation tokens in the data
- * @param {any} obj
- * @param {string[]} tokens
- */
-function findContinuationTokens(obj, tokens = []) {
+function findContinuationTokens(obj: any, tokens: string[] = []): string[] {
     if (!obj || typeof obj !== 'object') return tokens;
     
     if (obj.continuationCommand?.token) {
@@ -489,16 +504,11 @@ function findContinuationTokens(obj, tokens = []) {
     return tokens;
 }
 
-/**
- * Find the videos tab and extract its continuation token
- * @param {any} data
- */
-function findVideosTabData(data) {
+function findVideosTabData(data: any): VideosTabResult {
     const tabs = data?.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
     
-    log.parse(`Found ${tabs.length} tabs: ${tabs.map(t => t.tabRenderer?.title || t.expandableTabRenderer?.title || '?').join(', ')}`);
+    log.parse(`Found ${tabs.length} tabs: ${tabs.map((t: any) => t.tabRenderer?.title || t.expandableTabRenderer?.title || '?').join(', ')}`);
     
-    // First, try to find the Videos tab
     for (const tab of tabs) {
         const tabRenderer = tab.tabRenderer;
         if (!tabRenderer) continue;
@@ -507,12 +517,10 @@ function findVideosTabData(data) {
         const richGridRenderer = tabRenderer.content?.richGridRenderer;
         const sectionListRenderer = tabRenderer.content?.sectionListRenderer;
         
-        // Process this tab if it's Videos OR if it has content (for Home/Featured)
         if (tabTitle === 'videos' || richGridRenderer || sectionListRenderer) {
-            const videos = [];
-            let continuationToken = null;
+            const videos: Video[] = [];
+            let continuationToken: string | null = null;
             
-            // Try richGridRenderer (Videos tab)
             if (richGridRenderer) {
                 const contents = richGridRenderer.contents || [];
                 
@@ -522,14 +530,12 @@ function findVideosTabData(data) {
                         videos.push(extractVideoFromRenderer(renderer));
                     }
                     
-                    // Look for continuation item
                     if (item.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token) {
                         continuationToken = item.continuationItemRenderer.continuationEndpoint.continuationCommand.token;
                     }
                 }
             }
             
-            // Try sectionListRenderer (Home/Featured tab)
             if (sectionListRenderer) {
                 const sections = sectionListRenderer.contents || [];
                 for (const section of sections) {
@@ -555,11 +561,7 @@ function findVideosTabData(data) {
     return { videos: [], continuationToken: null, tabTitle: null };
 }
 
-/**
- * Find the shorts tab and extract shorts with continuation token
- * @param {any} data
- */
-function findShortsTabData(data) {
+function findShortsTabData(data: any): ShortsTabResult {
     const tabs = data?.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
     
     for (const tab of tabs) {
@@ -572,12 +574,11 @@ function findShortsTabData(data) {
         const richGridRenderer = tabRenderer.content?.richGridRenderer;
         if (!richGridRenderer) continue;
         
-        const shorts = [];
-        let continuationToken = null;
+        const shorts: Short[] = [];
+        let continuationToken: string | null = null;
         const contents = richGridRenderer.contents || [];
         
         for (const item of contents) {
-            // Shorts can be in different renderer types
             const reelRenderer = item.richItemRenderer?.content?.reelItemRenderer;
             const shortsViewModel = item.richItemRenderer?.content?.shortsLockupViewModel;
             
@@ -589,7 +590,6 @@ function findShortsTabData(data) {
                     isShort: true,
                 });
             } else if (shortsViewModel) {
-                // Extract videoId from onTap command or entityId
                 const videoId = shortsViewModel.onTap?.innertubeCommand?.reelWatchEndpoint?.videoId ||
                     shortsViewModel.entityId?.replace('shorts-shelf-item-', '');
                 shorts.push({
@@ -600,7 +600,6 @@ function findShortsTabData(data) {
                 });
             }
             
-            // Look for continuation item
             if (item.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token) {
                 continuationToken = item.continuationItemRenderer.continuationEndpoint.continuationCommand.token;
             }
@@ -615,17 +614,13 @@ function findShortsTabData(data) {
     return { shorts: [], continuationToken: null };
 }
 
-/**
- * Extract shorts from browse API response
- * @param {any} data
- */
-function extractShortsFromBrowseResponse(data) {
-    const shorts = [];
-    let nextContinuationToken = null;
+function extractShortsFromBrowseResponse(data: any): BrowseShortsResult {
+    const shorts: Short[] = [];
+    let nextContinuationToken: string | null = null;
     
     const actions = data?.onResponseReceivedActions || data?.onResponseReceivedEndpoints || [];
     
-    let continuationItems = [];
+    let continuationItems: any[] = [];
     for (const action of actions) {
         continuationItems = 
             action.appendContinuationItemsAction?.continuationItems ||
@@ -635,7 +630,6 @@ function extractShortsFromBrowseResponse(data) {
     }
     
     for (const item of continuationItems) {
-        // Look for continuation token for next page
         if (item.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token) {
             nextContinuationToken = item.continuationItemRenderer.continuationEndpoint.continuationCommand.token;
             continue;
@@ -666,18 +660,13 @@ function extractShortsFromBrowseResponse(data) {
     return { shorts, rawItemCount: continuationItems.length, nextContinuationToken };
 }
 
-/**
- * Extract video items from browse API response
- * @param {any} data
- */
-function extractVideosFromBrowseResponse(data) {
-    const videos = [];
-    let nextContinuationToken = null;
+function extractVideosFromBrowseResponse(data: any): BrowseVideosResult {
+    const videos: Video[] = [];
+    let nextContinuationToken: string | null = null;
     
-    // Try different response structures
     const actions = data?.onResponseReceivedActions || data?.onResponseReceivedEndpoints || [];
     
-    let continuationItems = [];
+    let continuationItems: any[] = [];
     for (const action of actions) {
         continuationItems = 
             action.appendContinuationItemsAction?.continuationItems ||
@@ -687,21 +676,17 @@ function extractVideosFromBrowseResponse(data) {
     }
     
     for (const item of continuationItems) {
-        // Look for continuation token for next page
         if (item.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token) {
             nextContinuationToken = item.continuationItemRenderer.continuationEndpoint.continuationCommand.token;
             continue;
         }
         
-        // Format 1: richItemRenderer > videoRenderer
         let renderer = item.richItemRenderer?.content?.videoRenderer;
         
-        // Format 2: gridVideoRenderer
         if (!renderer) {
             renderer = item.gridVideoRenderer;
         }
         
-        // Format 3: playlistVideoRenderer
         if (!renderer) {
             renderer = item.playlistVideoRenderer;
         }
@@ -714,21 +699,15 @@ function extractVideosFromBrowseResponse(data) {
     return { videos, rawItemCount: continuationItems.length, nextContinuationToken };
 }
 
-/**
- * Extract videos from initial page data
- * @param {any} data
- */
-function extractVideosFromInitialData(data) {
-    const videos = [];
+function extractVideosFromInitialData(data: any): Video[] {
+    const videos: Video[] = [];
     
-    // Navigate to tab content (usually Videos tab)
     const tabs = data?.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
     
     for (const tab of tabs) {
         const tabRenderer = tab.tabRenderer;
         if (!tabRenderer?.content) continue;
         
-        // Try to find video items in the tab content
         const richGridRenderer = tabRenderer.content?.richGridRenderer;
         const sectionListRenderer = tabRenderer.content?.sectionListRenderer;
         
@@ -749,27 +728,21 @@ function extractVideosFromInitialData(data) {
     return videos;
 }
 
-/**
- * Extract detailed channel information
- * @param {any} data
- */
-function extractChannelDetails(data) {
+function extractChannelDetails(data: any): ChannelDetails {
     const metadata = data.metadata?.channelMetadataRenderer || {};
     const header = data.header?.c4TabbedHeaderRenderer || data.header?.pageHeaderRenderer || {};
     const microformat = data.microformat?.microformatDataRenderer || {};
     
-    let subscriberCount = null;
-    let videoCount = null;
-    let viewCount = null;
-    let joinDate = null;
-    let country = null;
-    let links = [];
-    let aboutContinuationToken = null;
+    let subscriberCount: string | null = null;
+    let videoCount: string | null = null;
+    let viewCount: string | null = null;
+    let joinDate: string | null = null;
+    let country: string | null = null;
+    let links: ChannelLink[] = [];
+    let aboutContinuationToken: string | null = null;
     
-    // Try to get from c4TabbedHeaderRenderer (older format)
     subscriberCount = header.subscriberCountText?.simpleText;
     
-    // Try to get from pageHeaderRenderer > pageHeaderViewModel (newer format)
     const headerContent = header.content?.pageHeaderViewModel;
     if (headerContent) {
         const metadataRows = headerContent.metadata?.contentMetadataViewModel?.metadataRows || [];
@@ -782,7 +755,6 @@ function extractChannelDetails(data) {
             }
         }
         
-        // Look for about continuation token in the description panel
         const descPanel = headerContent.description?.descriptionPreviewViewModel?.rendererContext?.commandContext?.onTap?.innertubeCommand?.showEngagementPanelEndpoint;
         if (descPanel) {
             const contents = descPanel.engagementPanel?.engagementPanelSectionListRenderer?.content?.sectionListRenderer?.contents || [];
@@ -795,23 +767,20 @@ function extractChannelDetails(data) {
         }
     }
     
-    // Look in the about tab data if available (for old format pages)
     const tabs = data.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
     for (const tab of tabs) {
         const sectionContents = tab.tabRenderer?.content?.sectionListRenderer?.contents || [];
         for (const section of sectionContents) {
             const itemSection = section.itemSectionRenderer?.contents?.[0];
             
-            // Old structure: channelAboutFullMetadataRenderer
             const aboutRenderer = itemSection?.channelAboutFullMetadataRenderer;
             if (aboutRenderer) {
                 viewCount = viewCount || aboutRenderer.viewCountText?.simpleText;
-                joinDate = joinDate || aboutRenderer.joinedDateText?.runs?.map(r => r.text).join('');
+                joinDate = joinDate || aboutRenderer.joinedDateText?.runs?.map((r: any) => r.text).join('');
                 country = country || aboutRenderer.country?.simpleText;
                 videoCount = videoCount || aboutRenderer.videoCountText?.simpleText;
             }
             
-            // New structure: aboutChannelRenderer
             const aboutChannelRenderer = itemSection?.aboutChannelRenderer;
             if (aboutChannelRenderer) {
                 const aboutView = aboutChannelRenderer.metadata?.aboutChannelViewModel;
@@ -822,7 +791,6 @@ function extractChannelDetails(data) {
                     videoCount = videoCount || aboutView.videoCountText;
                     subscriberCount = subscriberCount || aboutView.subscriberCountText;
                     
-                    // Get links
                     const linkSection = aboutView.links || [];
                     for (const link of linkSection) {
                         const channelLink = link.channelExternalLinkViewModel;
@@ -859,12 +827,8 @@ function extractChannelDetails(data) {
     };
 }
 
-/**
- * Extract extended channel details from about API response
- * @param {any} data
- */
-function extractAboutDetails(data) {
-    const details = {
+function extractAboutDetails(data: any): ExtendedDetails {
+    const details: ExtendedDetails = {
         viewCount: null,
         joinDate: null,
         country: null,
@@ -882,7 +846,6 @@ function extractAboutDetails(data) {
                 details.joinDate = aboutView.joinedDateText?.content;
                 details.country = aboutView.country;
                 
-                // Get links
                 const linkSection = aboutView.links || [];
                 for (const link of linkSection) {
                     const channelLink = link.channelExternalLinkViewModel;
@@ -900,13 +863,8 @@ function extractAboutDetails(data) {
     return details;
 }
 
-/**
- * Generate a static HTML page with channel details and videos
- * @param {object[]} channels - Array of channel objects with { channel, videos }
- * @param {string} outputPath - Output file path
- */
-function generateHtmlPage(channels, outputPath) {
-    const escapeHtml = (str) => {
+function generateHtmlPage(channels: ChannelData[], outputPath: string): string {
+    const escapeHtml = (str: string | undefined | null): string => {
         if (!str) return '';
         return str
             .replace(/&/g, '&amp;')
@@ -916,14 +874,12 @@ function generateHtmlPage(channels, outputPath) {
             .replace(/'/g, '&#039;');
     };
 
-    const formatNumber = (str) => {
+    const formatNumber = (str: string | undefined | null): string => {
         if (!str) return 'N/A';
         return str;
     };
 
-    // Calculate approximate date from relative time string (e.g., "2 days ago" -> "~Jan 31, 2026")
-    // Note: YouTube only provides relative times which are rounded, so dates are approximate
-    const calculateActualDate = (relativeTime) => {
+    const calculateActualDate = (relativeTime: string | undefined): string | null => {
         if (!relativeTime) return null;
         const str = relativeTime.toLowerCase();
         const match = str.match(/(\d+)\s*(second|minute|hour|day|week|month|year)s?/);
@@ -947,12 +903,10 @@ function generateHtmlPage(channels, outputPath) {
         return `~${dateStr} (approximate)`;
     };
 
-    // Combine all videos from all channels, tagging each with channel info
-    // Use Sets to track seen videoIds and prevent duplicates
-    const allVideos = [];
-    const allShorts = [];
-    const seenVideoIds = new Set();
-    const seenShortIds = new Set();
+    const allVideos: Video[] = [];
+    const allShorts: Video[] = [];
+    const seenVideoIds = new Set<string>();
+    const seenShortIds = new Set<string>();
     
     channels.forEach((ch, channelIndex) => {
         ch.videos.forEach(v => {
@@ -977,7 +931,6 @@ function generateHtmlPage(channels, outputPath) {
 
     const isMultiChannel = channels.length > 1;
     
-    // Generate channel colors for multi-channel mode
     const channelColors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dfe6e9', '#fd79a8', '#a29bfe'];
 
     const html = `<!DOCTYPE html>
@@ -1007,7 +960,6 @@ function generateHtmlPage(channels, outputPath) {
             padding: 20px;
         }
         
-        /* Header / Channel Info */
         .channel-header {
             background: linear-gradient(135deg, #2d3436 0%, #1e272e 100%);
             border-radius: 16px;
@@ -1081,7 +1033,6 @@ function generateHtmlPage(channels, outputPath) {
             transform: translateY(-2px);
         }
         
-        /* Videos Section */
         .videos-section {
             margin-top: 40px;
         }
@@ -1182,7 +1133,6 @@ function generateHtmlPage(channels, outputPath) {
             gap: 5px;
         }
         
-        /* Video Description (collapsible) */
         .video-description {
             margin-top: 10px;
             padding-top: 10px;
@@ -1243,7 +1193,6 @@ function generateHtmlPage(channels, outputPath) {
             background: rgba(255,255,255,0.3);
         }
         
-        /* Footer */
         .footer {
             text-align: center;
             padding: 40px 20px;
@@ -1251,7 +1200,6 @@ function generateHtmlPage(channels, outputPath) {
             font-size: 0.9rem;
         }
         
-        /* Search/Filter */
         .controls {
             margin-bottom: 25px;
             display: flex;
@@ -1342,7 +1290,6 @@ function generateHtmlPage(channels, outputPath) {
             }
         }
         
-        /* Shorts Section */
         .shorts-section {
             margin-top: 50px;
         }
@@ -1432,7 +1379,6 @@ function generateHtmlPage(channels, outputPath) {
             background: linear-gradient(135deg, #ff0050 0%, #ff0000 100%);
         }
         
-        /* Tab navigation */
         .content-tabs {
             display: flex;
             gap: 10px;
@@ -1464,7 +1410,6 @@ function generateHtmlPage(channels, outputPath) {
             border-color: #ff0050;
         }
         
-        /* Channel tabs for multi-channel mode */
         .channel-tabs {
             display: flex;
             gap: 10px;
@@ -1684,7 +1629,7 @@ function generateHtmlPage(channels, outputPath) {
                 ${allVideos.map((video, index) => `
                 <article class="video-card" data-title="${escapeHtml(video.title?.toLowerCase() || '')}" data-views="${escapeHtml(video.viewCount || '0')}" data-date="${escapeHtml(video.publishedTime || '')}" data-exact-date="${escapeHtml(video.publishDate || '')}" data-duration="${escapeHtml(video.duration || '0:00')}" data-index="${index}" data-channel="${video.channelIndex}">
                     <div class="video-thumbnail">
-                        ${isMultiChannel ? `<span class="channel-indicator" style="--channel-color: ${channelColors[video.channelIndex % channelColors.length]};">${escapeHtml(video.channelTitle)}</span>` : ''}
+                        ${isMultiChannel ? `<span class="channel-indicator" style="--channel-color: ${channelColors[(video.channelIndex ?? 0) % channelColors.length]};">${escapeHtml(video.channelTitle)}</span>` : ''}
                         <a href="https://www.youtube.com/watch?v=${escapeHtml(video.videoId)}" target="_blank" rel="noopener">
                             <img src="https://i.ytimg.com/vi/${escapeHtml(video.videoId)}/mqdefault.jpg" alt="${escapeHtml(video.title)}" loading="lazy">
                         </a>
@@ -1731,7 +1676,7 @@ function generateHtmlPage(channels, outputPath) {
                 ${allShorts.map(short => `
                 <article class="short-card" data-title="${escapeHtml(short.title?.toLowerCase() || '')}" data-channel="${short.channelIndex}">
                     <div class="short-thumbnail">
-                        ${isMultiChannel ? `<span class="channel-indicator" style="--channel-color: ${channelColors[short.channelIndex % channelColors.length]}; top: 35px;">${escapeHtml(short.channelTitle)}</span>` : ''}
+                        ${isMultiChannel ? `<span class="channel-indicator" style="--channel-color: ${channelColors[(short.channelIndex ?? 0) % channelColors.length]}; top: 35px;">${escapeHtml(short.channelTitle)}</span>` : ''}
                         <a href="https://www.youtube.com/shorts/${escapeHtml(short.videoId)}" target="_blank" rel="noopener">
                             <img src="https://i.ytimg.com/vi/${escapeHtml(short.videoId)}/oar2.jpg" alt="${escapeHtml(short.title)}" loading="lazy">
                         </a>
@@ -1760,29 +1705,23 @@ function generateHtmlPage(channels, outputPath) {
     </div>
     
     <script>
-        // Search functionality for videos
         const searchBox = document.getElementById('searchBox');
         const videosGrid = document.getElementById('videosGrid');
         const videoCards = videosGrid?.querySelectorAll('.video-card') || [];
         
-        // Search functionality for shorts
         const searchBoxShorts = document.getElementById('searchBoxShorts');
         const shortsGrid = document.getElementById('shortsGrid');
         const shortCards = shortsGrid?.querySelectorAll('.short-card') || [];
         
-        // Sorting functionality for videos
         const sortButtons = document.querySelectorAll('.sort-btn');
         
         function parseViews(viewStr) {
             if (!viewStr) return 0;
-            // Remove commas and convert to lowercase: "283,817 views" -> "283817 views"
             const str = viewStr.toLowerCase().replace(/,/g, '');
-            // Try to match full number first (e.g., "283817 views")
             const fullMatch = str.match(/^([\\d]+)/);
             if (fullMatch) {
                 return parseInt(fullMatch[1]);
             }
-            // Try abbreviated format (e.g., "1.2M views", "500K views")
             const abbrMatch = str.match(/([\\d.]+)\\s*(k|m|b)/);
             if (abbrMatch) {
                 let num = parseFloat(abbrMatch[1]);
@@ -1806,7 +1745,6 @@ function generateHtmlPage(channels, outputPath) {
         function parseDateAge(dateStr) {
             if (!dateStr) return Infinity;
             const str = dateStr.toLowerCase();
-            // Match patterns like "10 years ago", "1 month ago", "2 days ago"
             const match = str.match(/(\\d+)\\s*(second|minute|hour|day|week|month|year)s?/);
             if (!match) return Infinity;
             const num = parseInt(match[1]);
@@ -1816,7 +1754,6 @@ function generateHtmlPage(channels, outputPath) {
         }
         
         function parseExactDate(dateStr) {
-            // Parse exact dates like "Dec 22, 2025" or "Jan 1, 2024"
             if (!dateStr) return null;
             const date = new Date(dateStr);
             if (isNaN(date.getTime())) return null;
@@ -1839,19 +1776,17 @@ function generateHtmlPage(channels, outputPath) {
                         valB = parseDuration(b.dataset.duration);
                         break;
                     case 'date':
-                        // Prefer exact dates for sorting, fall back to relative dates
                         const exactA = parseExactDate(a.dataset.exactDate);
                         const exactB = parseExactDate(b.dataset.exactDate);
                         if (exactA !== null && exactB !== null) {
-                            // Both have exact dates - newer = higher timestamp
-                            valA = -exactA; // Negate so desc order shows newest first
+                            valA = -exactA;
                             valB = -exactB;
                         } else if (exactA !== null) {
-                            valA = 0; // Has exact date, treat as recent
+                            valA = 0;
                             valB = parseDateAge(b.dataset.date);
                         } else if (exactB !== null) {
                             valA = parseDateAge(a.dataset.date);
-                            valB = 0; // Has exact date, treat as recent
+                            valB = 0;
                         } else {
                             valA = parseDateAge(a.dataset.date);
                             valB = parseDateAge(b.dataset.date);
@@ -1877,7 +1812,6 @@ function generateHtmlPage(channels, outputPath) {
                 const sortBy = btn.dataset.sort;
                 let order = btn.dataset.order;
                 
-                // If clicking the same button, toggle order
                 if (btn.classList.contains('active') && sortBy !== 'default') {
                     order = order === 'asc' ? 'desc' : 'asc';
                     btn.dataset.order = order;
@@ -1885,7 +1819,6 @@ function generateHtmlPage(channels, outputPath) {
                     if (icon) icon.textContent = order === 'asc' ? '▲' : '▼';
                 }
                 
-                // Update active state
                 sortButtons.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 
@@ -1893,7 +1826,6 @@ function generateHtmlPage(channels, outputPath) {
             });
         });
         
-        // Channel tab filtering (multi-channel mode)
         const channelTabs = document.querySelectorAll('.channel-tab');
         const channelHeaders = document.querySelectorAll('.channel-header-row');
         let activeChannel = 'all';
@@ -1901,7 +1833,6 @@ function generateHtmlPage(channels, outputPath) {
         function filterByChannel(channelFilter) {
             activeChannel = channelFilter;
             
-            // Filter video cards
             videoCards.forEach(card => {
                 const cardChannel = card.dataset.channel;
                 const matchesSearch = searchBox.value.toLowerCase().trim() === '' || 
@@ -1910,7 +1841,6 @@ function generateHtmlPage(channels, outputPath) {
                 card.style.display = matchesSearch && matchesChannel ? '' : 'none';
             });
             
-            // Filter short cards
             shortCards.forEach(card => {
                 const cardChannel = card.dataset.channel;
                 const matchesSearch = searchBoxShorts?.value.toLowerCase().trim() === '' || 
@@ -1919,7 +1849,6 @@ function generateHtmlPage(channels, outputPath) {
                 card.style.display = matchesSearch && matchesChannel ? '' : 'none';
             });
             
-            // Show/hide channel headers
             channelHeaders.forEach(header => {
                 const headerChannel = header.dataset.channelHeader;
                 if (channelFilter === 'all') {
@@ -1940,7 +1869,6 @@ function generateHtmlPage(channels, outputPath) {
             });
         });
         
-        // Update search to respect channel filter
         if (searchBox) {
             searchBox.addEventListener('input', (e) => {
                 const query = e.target.value.toLowerCase().trim();
@@ -1976,32 +1904,22 @@ function generateHtmlPage(channels, outputPath) {
     return outputPath;
 }
 
-/**
- * Process a single channel and return its data
- * @param {string} channelInput - Channel ID or handle
- * @param {number} index - Channel index for logging
- * @param {number} total - Total number of channels
- */
-async function processChannel(channelInput, index, total) {
-    const { channelIdentifier, isHandle, channelUrl, channelShortsUrl, channelStreamsUrl, channelAboutUrl } = getChannelUrls(channelInput);
+async function processChannel(channelInput: string, index: number, total: number): Promise<ChannelData> {
+    const { channelIdentifier, channelUrl, channelShortsUrl, channelStreamsUrl, channelAboutUrl } = getChannelUrls(channelInput);
     
     log.header(`📺 CHANNEL ${index + 1}/${total}: ${channelIdentifier}`);
     
-    // Step 1: Fetch About page for channel details
     const aboutHtml = await fetchChannelPage(channelAboutUrl);
     const aboutData = extractYtInitialData(aboutHtml);
     log.success('Parsed About page data');
 
-    // Step 2: Extract initial channel details
     const channel = extractChannelDetails(aboutData);
     
-    // Step 3: If we have an about continuation token, fetch extended details
     if (channel.aboutContinuationToken) {
         log.fetch('Fetching extended channel details...');
         const extendedData = await fetchBrowseData(channel.aboutContinuationToken, channelAboutUrl);
         const extended = extractAboutDetails(extendedData);
         
-        // Merge extended details
         channel.viewCount = channel.viewCount || extended.viewCount;
         channel.joinDate = channel.joinDate || extended.joinDate;
         channel.country = channel.country || extended.country;
@@ -2011,7 +1929,6 @@ async function processChannel(channelInput, index, total) {
         log.success('Extended details loaded');
     }
     
-    // Step 4: Display channel metadata
     if (channel.title) {
         console.log(`   ${colors.bright}${channel.title}${colors.reset}`);
         if (channel.vanityUrl) log.detail('🔗 URL', channel.vanityUrl);
@@ -2022,13 +1939,11 @@ async function processChannel(channelInput, index, total) {
         if (channel.viewCount) log.detail('👁️  Views', channel.viewCount);
     }
 
-    // Step 5: Fetch Videos page
     console.log();
     const html = await fetchChannelPage(channelUrl);
     const data = extractYtInitialData(html);
     log.success('Parsed Videos page data');
 
-    // Step 6: Find videos tab and extract videos + continuation token
     const { videos: initialVideos, continuationToken } = findVideosTabData(data);
     
     if (initialVideos.length > 0) {
@@ -2037,13 +1952,11 @@ async function processChannel(channelInput, index, total) {
         log.warn('No videos found in Videos tab');
     }
 
-    // Step 7: Fetch more videos using continuation tokens until limit is reached
-    const allVideos = [...initialVideos.filter(v => !isVideoTooOld(v.publishedTime) && !isVideoTooShort(v.duration))];
+    const allVideos: Video[] = [...initialVideos.filter(v => !isVideoTooOld(v.publishedTime) && !isVideoTooShort(v.duration))];
     let currentToken = continuationToken;
     let pageNumber = 1;
     let reachedAgeLimit = false;
     
-    // Check if initial videos already hit age limit
     if (initialVideos.length > 0 && allVideos.length < initialVideos.length) {
         reachedAgeLimit = true;
         log.info(`Age limit reached (${MAX_VIDEO_AGE_DAYS} days) - some initial videos filtered`);
@@ -2056,14 +1969,13 @@ async function processChannel(channelInput, index, total) {
         log.info(`Loading more videos (Page ${pageNumber}), progress: ${limitInfo}`);
         
         const browseData = await fetchBrowseData(currentToken, channelUrl);
-        const { videos: moreVideos, rawItemCount, nextContinuationToken } = extractVideosFromBrowseResponse(browseData);
+        const { videos: moreVideos, nextContinuationToken } = extractVideosFromBrowseResponse(browseData);
         
         if (moreVideos.length === 0) {
             log.warn('No more videos found');
             break;
         }
         
-        // Filter by age and length, add videos up to the count limit
         for (const video of moreVideos) {
             if (allVideos.length >= VIDEO_LIMIT) break;
             if (isVideoTooOld(video.publishedTime)) {
@@ -2086,17 +1998,14 @@ async function processChannel(channelInput, index, total) {
     const stopReason = reachedAgeLimit ? ' (age limit)' : (allVideos.length >= VIDEO_LIMIT ? ' (count limit)' : '');
     log.success(`Videos fetched: ${allVideos.length}${stopReason}`);
 
-    // Step 8: Fetch Streams from /streams endpoint (only if --max-age is set)
-    // Note: We fetch streams regardless of reachedAgeLimit from videos, since streams are a different content source
     if (MAX_VIDEO_AGE_DAYS !== Infinity && allVideos.length < VIDEO_LIMIT) {
         log.info(`Fetching Streams (same limits as videos)...`);
         try {
             const streamsHtml = await fetchChannelPage(channelStreamsUrl);
             const streamsData = extractYtInitialData(streamsHtml);
             
-            // Find the selected "Live" tab on the streams page
             const streamsTabs = streamsData?.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
-            let streamsTabData = null;
+            let streamsTabData: VideosTabResult | null = null;
             
             for (const tab of streamsTabs) {
                 const tabRenderer = tab.tabRenderer;
@@ -2105,13 +2014,12 @@ async function processChannel(channelInput, index, total) {
                 const tabTitle = tabRenderer.title?.toLowerCase();
                 const isSelected = tabRenderer.selected === true;
                 
-                // Use the selected tab or the "Live" tab
                 if (isSelected || tabTitle === 'live') {
                     const richGridRenderer = tabRenderer.content?.richGridRenderer;
                     if (richGridRenderer) {
                         const contents = richGridRenderer.contents || [];
-                        const videos = [];
-                        let continuationToken = null;
+                        const videos: Video[] = [];
+                        let continuationToken: string | null = null;
                         
                         for (const item of contents) {
                             const renderer = item.richItemRenderer?.content?.videoRenderer;
@@ -2133,28 +2041,24 @@ async function processChannel(channelInput, index, total) {
             }
             
             if (!streamsTabData) {
-                // Fallback to findVideosTabData
                 streamsTabData = findVideosTabData(streamsData);
             }
             
             const { videos: initialStreams, continuationToken: streamsContinuationToken } = streamsTabData;
             
-// Filter and add streams respecting count, age, and length limits
-        let streamsAdded = 0;
-        let streamsSkipped = 0;
-        for (const stream of initialStreams) {
-            if (allVideos.length >= VIDEO_LIMIT) break;
-            // Skip upcoming/scheduled streams
-            if (isUpcomingStream(stream.publishedTime)) {
-                streamsSkipped++;
-                continue;
-            }
-            if (isVideoTooOld(stream.publishedTime)) {
-                reachedAgeLimit = true;
-                break;
-            }
-            if (isVideoTooShort(stream.duration)) continue;
-                // Mark as stream for potential future differentiation
+            let streamsAdded = 0;
+            let streamsSkipped = 0;
+            for (const stream of initialStreams) {
+                if (allVideos.length >= VIDEO_LIMIT) break;
+                if (isUpcomingStream(stream.publishedTime)) {
+                    streamsSkipped++;
+                    continue;
+                }
+                if (isVideoTooOld(stream.publishedTime)) {
+                    reachedAgeLimit = true;
+                    break;
+                }
+                if (isVideoTooShort(stream.duration)) continue;
                 stream.isStream = true;
                 allVideos.push(stream);
                 streamsAdded++;
@@ -2164,7 +2068,6 @@ async function processChannel(channelInput, index, total) {
                 log.info(`Skipped ${streamsSkipped} upcoming/scheduled streams`);
             }
             
-            // Fetch more streams if needed
             let streamsToken = streamsContinuationToken;
             let streamsPage = 1;
             
@@ -2178,7 +2081,6 @@ async function processChannel(channelInput, index, total) {
                 
                 for (const stream of moreStreams) {
                     if (allVideos.length >= VIDEO_LIMIT) break;
-                    // Skip upcoming/scheduled streams
                     if (isUpcomingStream(stream.publishedTime)) {
                         streamsSkipped++;
                         continue;
@@ -2202,25 +2104,23 @@ async function processChannel(channelInput, index, total) {
             } else {
                 log.info('No streams found within age limit');
             }
-        } catch (err) {
+        } catch (err: any) {
             log.warn(`Could not fetch streams: ${err.message}`);
         }
     }
 
-    // Step 9: Fetch Shorts from /shorts endpoint (only if --shorts-limit > 0)
     if (SHORTS_LIMIT > 0) {
         log.info(`Fetching Shorts (limit: ${SHORTS_LIMIT}, no age filter)...`);
         const shortsHtml = await fetchChannelPage(channelShortsUrl);
         const shortsData = extractYtInitialData(shortsHtml);
         
         const { shorts: initialShorts, continuationToken: shortsContinuationToken } = findShortsTabData(shortsData);
-        const allShorts = [...initialShorts.slice(0, SHORTS_LIMIT)];
+        const allShorts: Video[] = [...initialShorts.slice(0, SHORTS_LIMIT)];
         
         if (initialShorts.length > 0) {
             log.info(`Found ${initialShorts.length} shorts from initial page`);
         }
 
-        // Fetch more shorts up to SHORTS_LIMIT
         let shortsToken = shortsContinuationToken;
         let shortsPage = 1;
         
@@ -2256,46 +2156,37 @@ async function processChannel(channelInput, index, total) {
     };
 }
 
-/**
- * Process channels in parallel with concurrency limit
- * @param {string[]} channels - Array of channel IDs or handles
- * @param {number} concurrencyLimit - Maximum concurrent operations
- */
-async function processChannelsInParallel(channels, concurrencyLimit) {
-    const results = [];
+async function processChannelsInParallel(channels: string[], concurrencyLimit: number): Promise<ChannelData[]> {
+    const results: ChannelData[] = [];
     const total = channels.length;
     let nextIndex = 0;
     
-    // Create worker pool
-    async function worker() {
+    async function worker(): Promise<void> {
         while (nextIndex < total) {
             const index = nextIndex++;
             try {
                 const result = await processChannel(channels[index], index, total);
                 results.push(result);
-            } catch (err) {
+            } catch (err: any) {
                 log.error(`Failed to process channel ${channels[index]}: ${err.message}`);
             }
         }
     }
     
-    // Start workers up to concurrency limit
-    const workers = [];
+    const workers: Promise<void>[] = [];
     const workerCount = Math.min(concurrencyLimit, total);
     for (let i = 0; i < workerCount; i++) {
         workers.push(worker());
     }
     
-    // Wait for all workers to complete
     await Promise.all(workers);
     
-    // Sort results back to original order
-    results.sort((a, b) => a.originalIndex - b.originalIndex);
+    results.sort((a, b) => (a.originalIndex ?? 0) - (b.originalIndex ?? 0));
     
     return results.map(({ channel, videos }) => ({ channel, videos }));
 }
 
-async function main() {
+async function main(): Promise<void> {
     try {
         log.header('🔄 FETCHING CHANNEL DATA');
         log.info(`Processing ${channelIds.length} channel(s): ${channelIds.join(', ')}`);
@@ -2308,14 +2199,12 @@ async function main() {
         
         const allChannelData = await processChannelsInParallel(channelIds, MAX_CONCURRENT_CHANNELS);
 
-        // Enrich videos with detailed information if flag is set
         if (ENRICH_VIDEOS) {
             for (const channelData of allChannelData) {
                 channelData.videos = await enrichVideosWithDetails(channelData.videos, ENRICH_CONCURRENCY);
             }
         }
 
-        // Final summary
         log.header(`📊 FINAL SUMMARY`);
         const totalVideos = allChannelData.reduce((sum, ch) => sum + ch.videos.filter(v => !v.isShort).length, 0);
         const totalShorts = allChannelData.reduce((sum, ch) => sum + ch.videos.filter(v => v.isShort).length, 0);
@@ -2324,7 +2213,6 @@ async function main() {
         if (totalShorts > 0) log.info(`Shorts: ${totalShorts}`);
         log.success(`Total content: ${totalVideos + totalShorts}`);
 
-        // Generate HTML if flag is set
         if (GENERATE_HTML) {
             log.header('📄 GENERATING HTML PAGE');
             const outputPath = path.resolve(OUTPUT_FILE);
@@ -2332,7 +2220,7 @@ async function main() {
             log.success(`HTML page generated: ${outputPath}`);
             log.info(`Open in browser: file://${outputPath}`);
         }
-    } catch (err) {
+    } catch (err: any) {
         log.error(err.message);
     }
 }
@@ -2342,7 +2230,7 @@ if (args.includes('--help') || args.includes('-h')) {
     console.log(`
 YouTube Channel Fetcher
 
-Usage: node youtube.js [options]
+Usage: bun run generator/youtube.ts [options]
 
 Options:
   --channel=ID|@HANDLE  YouTube channel ID or handle to fetch (can specify multiple times or comma-separated)
@@ -2359,33 +2247,33 @@ Options:
 
 Examples:
   # Using channel ID:
-  node youtube.js --channel=UCXuqSBlHAE6Xw-yeJA0Tunw
-  node youtube.js --channel=UCXuqSBlHAE6Xw-yeJA0Tunw --html
+  bun run generator/youtube.ts --channel=UCXuqSBlHAE6Xw-yeJA0Tunw
+  bun run generator/youtube.ts --channel=UCXuqSBlHAE6Xw-yeJA0Tunw --html
   
   # Using channel handle (starts with @):
-  node youtube.js --channel=@LinusTechTips
-  node youtube.js --channel=@LinusTechTips --html --output=linus.html
+  bun run generator/youtube.ts --channel=@LinusTechTips
+  bun run generator/youtube.ts --channel=@LinusTechTips --html --output=linus.html
   
   # Limit by count or age (whichever comes first):
-  node youtube.js --channel=@MKBHD --limit=50                    # Max 50 videos
-  node youtube.js --channel=@MKBHD --max-age=365                 # Videos from last year only
-  node youtube.js --channel=@MKBHD --limit=100 --max-age=180     # Max 100 videos, no older than 6 months
+  bun run generator/youtube.ts --channel=@MKBHD --limit=50                    # Max 50 videos
+  bun run generator/youtube.ts --channel=@MKBHD --max-age=365                 # Videos from last year only
+  bun run generator/youtube.ts --channel=@MKBHD --limit=100 --max-age=180     # Max 100 videos, no older than 6 months
   
   # Filter by minimum length:
-  node youtube.js --channel=@MKBHD --min-length=60               # Exclude videos under 1 minute
-  node youtube.js --channel=@MKBHD --min-length=300              # Only videos 5+ minutes
+  bun run generator/youtube.ts --channel=@MKBHD --min-length=60               # Exclude videos under 1 minute
+  bun run generator/youtube.ts --channel=@MKBHD --min-length=300              # Only videos 5+ minutes
   
   # Include Shorts:
-  node youtube.js --channel=@MKBHD --shorts-limit=50             # 150 videos + 50 shorts
-  node youtube.js --channel=@MKBHD --limit=100 --shorts-limit=30 # 100 videos + 30 shorts
+  bun run generator/youtube.ts --channel=@MKBHD --shorts-limit=50             # 150 videos + 50 shorts
+  bun run generator/youtube.ts --channel=@MKBHD --limit=100 --shorts-limit=30 # 100 videos + 30 shorts
   
   # Enrich with detailed info (publish date, description):
-  node youtube.js --channel=@MKBHD --limit=20 --enrich --html    # Fetch details for 20 videos
-  node youtube.js --channel=@MKBHD --enrich --enrich-delay=1000  # Slower to avoid rate limits
+  bun run generator/youtube.ts --channel=@MKBHD --limit=20 --enrich --html    # Fetch details for 20 videos
+  bun run generator/youtube.ts --channel=@MKBHD --enrich --enrich-delay=1000  # Slower to avoid rate limits
   
   # Multiple channels (tabs view with combined sortable videos):
-  node youtube.js --channel=@LinusTechTips --channel=@MKBHD --html
-  node youtube.js --channel=UCXuqSBlHAE6Xw-yeJA0Tunw,@MKBHD --html --output=multi.html
+  bun run generator/youtube.ts --channel=@LinusTechTips --channel=@MKBHD --html
+  bun run generator/youtube.ts --channel=UCXuqSBlHAE6Xw-yeJA0Tunw,@MKBHD --html --output=multi.html
 
 Notes:
   - Channels can be specified by ID (e.g., UCXuqSBlHAE6Xw-yeJA0Tunw) or handle (e.g., @LinusTechTips)

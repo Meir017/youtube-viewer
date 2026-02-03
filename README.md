@@ -1,6 +1,6 @@
 # YouTube Viewer
 
-A Node.js CLI tool for fetching and aggregating videos from multiple YouTube channels. Generate HTML pages to browse trending videos from your favorite channels.
+A Bun/TypeScript CLI tool for fetching and aggregating videos from multiple YouTube channels. Generate HTML pages to browse trending videos from your favorite channels.
 
 ## Features
 
@@ -13,7 +13,7 @@ A Node.js CLI tool for fetching and aggregating videos from multiple YouTube cha
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) (v18 or later recommended)
+- [Bun](https://bun.sh/) (v1.0 or later)
 
 ## Getting Started
 
@@ -24,10 +24,16 @@ git clone https://github.com/Meir017/youtube-viewer.git
 cd youtube-viewer
 ```
 
+### Install Dependencies
+
+```bash
+bun install
+```
+
 ### Basic Usage
 
 ```bash
-node generator/youtube.js --channel=@GitHub --html --output=output.html
+bun run generator/youtube.ts --channel=@GitHub --html --output=output.html
 ```
 
 ## CLI Options
@@ -50,7 +56,7 @@ node generator/youtube.js --channel=@GitHub --html --output=output.html
 ### Fetch videos from multiple tech channels
 
 ```bash
-node generator/youtube.js --channel=@GitHub,@code,@MicrosoftDeveloper --html --output=tech.html --max-age=30 --limit=500
+bun run generator/youtube.ts --channel=@GitHub,@code,@MicrosoftDeveloper --html --output=tech.html --max-age=30 --limit=500
 ```
 
 ### Using PowerShell scripts
@@ -71,13 +77,13 @@ Pre-configured scripts are available in the `generator/` directory:
 ### Fetch from a single channel with shorts
 
 ```bash
-node generator/youtube.js --channel=@channelhandle --shorts-limit=50 --html --output=channel.html
+bun run generator/youtube.ts --channel=@channelhandle --shorts-limit=50 --html --output=channel.html
 ```
 
 ### Enrich videos with additional metadata
 
 ```bash
-node generator/youtube.js --channel=@GitHub --enrich --enrich-concurrency=2 --html
+bun run generator/youtube.ts --channel=@GitHub --enrich --enrich-concurrency=2 --html
 ```
 
 ## Project Structure
@@ -85,10 +91,12 @@ node generator/youtube.js --channel=@GitHub --enrich --enrich-concurrency=2 --ht
 ```
 youtube-viewer/
 ├── generator/
-│   ├── youtube.js          # Main CLI script
+│   ├── youtube.ts          # Main CLI script (TypeScript)
 │   ├── tech.ps1            # Tech channels preset
 │   ├── movies.ps1          # Movies channels preset
 │   └── tech-podcasts.ps1   # Tech podcasts preset
+├── package.json            # Bun project configuration
+├── tsconfig.json           # TypeScript configuration
 ├── LICENSE
 └── README.md
 ```
