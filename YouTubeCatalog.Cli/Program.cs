@@ -5,6 +5,9 @@ using YouTubeCatalog.Api.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
+using YoutubeExplode;
+using YoutubeExplode.Channels;
+using YoutubeExplode.Common;
 
 var inputOption = new Option<string?>("--input", "-i")
 {
@@ -50,6 +53,7 @@ root.SetAction(async (parseResult, cancellationToken) =>
 
     var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("cli");
     var client = services.GetRequiredService<YoutubeClientWrapper>();
+    var youtubeClient = new YoutubeClient();
 
     if (string.IsNullOrWhiteSpace(input) || !System.IO.File.Exists(input))
     {
@@ -67,6 +71,26 @@ root.SetAction(async (parseResult, cancellationToken) =>
         logger.LogInformation("Fetching channel {Channel}", ch);
         try
         {
+            // Resolve and fetch channel details
+            Channel channel;
+            if (ch.StartsWith('@'))
+            {
+                channel = await youtubeClient.Channels.GetByHandleAsync(new ChannelHandle(ch.Substring(1)), cancellationToken);
+            }
+            else
+            {
+                channel = await youtubeClient.Channels.GetAsync(ch, cancellationToken);
+            }
+
+            var channelDetails = new System.Collections.Generic.Dictionary<string, object?>
+            {
+                ["handle"] = ch.StartsWith('@') ? ch : $"@{channel.Title.Replace(" ", "")}",
+                ["id"] = channel.Id.Value,
+                ["title"] = channel.Title,
+                ["url"] = channel.Url,
+                ["thumbnailUrl"] = channel.Thumbnails.GetWithHighestResolution()?.Url
+            };
+
             var videos = await client.GetTopViewedVideosAsync(ch, int.MaxValue, days, cancellationToken);
             var list = new System.Collections.Generic.List<object>();
             foreach (var v in videos)
@@ -75,7 +99,7 @@ root.SetAction(async (parseResult, cancellationToken) =>
             }
             results.Add(new System.Collections.Generic.Dictionary<string, object>
             {
-                ["channel"] = ch,
+                ["channel"] = channelDetails!,
                 ["videos"] = list
             });
         }
