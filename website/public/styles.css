@@ -534,6 +534,45 @@ body {
     color: rgba(255,255,255,0.5);
 }
 
+/* Refresh Button */
+.refresh-btn {
+    padding: 10px 18px;
+    border-radius: 20px;
+    border: 2px solid rgba(78, 205, 196, 0.5);
+    background: rgba(78, 205, 196, 0.15);
+    color: #4ecdc4;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.refresh-btn:hover {
+    background: rgba(78, 205, 196, 0.25);
+    border-color: #4ecdc4;
+}
+
+.refresh-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.refresh-btn.loading {
+    background: rgba(78, 205, 196, 0.2);
+}
+
+.refresh-icon {
+    font-size: 1rem;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 .sort-buttons {
     display: flex;
     gap: 8px;

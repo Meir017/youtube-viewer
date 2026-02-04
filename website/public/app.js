@@ -187,6 +187,9 @@ const applyMaxAgeBtn = document.getElementById('applyMaxAgeBtn');
 const minDurationInput = document.getElementById('minDurationInput');
 const maxDurationInput = document.getElementById('maxDurationInput');
 
+// Refresh button
+const refreshAllBtn = document.getElementById('refreshAllBtn');
+
 // Collection modal elements
 const addCollectionBtn = document.getElementById('addCollectionBtn');
 const addCollectionModal = document.getElementById('addCollectionModal');
@@ -204,6 +207,9 @@ document.addEventListener('DOMContentLoaded', () => {
     sortButtons.forEach(btn => {
         btn.addEventListener('click', () => handleSort(btn));
     });
+    
+    // Refresh button listener
+    refreshAllBtn.addEventListener('click', handleRefreshAll);
     
     // Catalog filter listeners
     applyMaxAgeBtn.addEventListener('click', handleApplyMaxAge);
@@ -390,6 +396,30 @@ async function handleApplyMaxAge() {
         applyMaxAgeBtn.disabled = false;
         applyMaxAgeBtn.textContent = 'Apply';
         applyMaxAgeBtn.classList.remove('loading');
+    }
+}
+
+// Handle refresh all button click
+async function handleRefreshAll() {
+    if (!activeCollectionId || isLoading) return;
+    
+    refreshAllBtn.disabled = true;
+    refreshAllBtn.classList.add('loading');
+    const refreshIcon = refreshAllBtn.querySelector('.refresh-icon');
+    const refreshText = refreshAllBtn.querySelector('.refresh-text');
+    refreshText.textContent = 'Refreshing...';
+    refreshIcon.style.animation = 'spin 1s linear infinite';
+    
+    try {
+        await refreshCollectionChannels();
+    } catch (error) {
+        showError('Failed to refresh videos');
+        console.error('Refresh error:', error);
+    } finally {
+        refreshAllBtn.disabled = false;
+        refreshAllBtn.classList.remove('loading');
+        refreshText.textContent = 'Refresh';
+        refreshIcon.style.animation = '';
     }
 }
 
