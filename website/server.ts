@@ -181,7 +181,34 @@ const server = Bun.serve({
                     for (const channel of collection.channels) {
                         try {
                             console.log(`  Refreshing: ${channel.handle}`);
+                            
+                            // Preserve existing enrichment data before refresh
+                            const existingEnrichment = new Map<string, { publishDate?: string; description?: string }>();
+                            if (channel.data?.videos) {
+                                for (const video of channel.data.videos) {
+                                    if (video.publishDate || video.description) {
+                                        existingEnrichment.set(video.videoId, {
+                                            publishDate: video.publishDate,
+                                            description: video.description,
+                                        });
+                                    }
+                                }
+                            }
+                            
                             const channelData = await processChannelForWeb(channel.handle, { maxAgeDays });
+                            
+                            // Restore enrichment data to matching videos
+                            if (existingEnrichment.size > 0 && channelData.videos) {
+                                for (const video of channelData.videos) {
+                                    const enrichment = existingEnrichment.get(video.videoId);
+                                    if (enrichment) {
+                                        video.publishDate = enrichment.publishDate;
+                                        video.description = enrichment.description;
+                                    }
+                                }
+                                console.log(`    Preserved enrichment data for ${existingEnrichment.size} videos`);
+                            }
+                            
                             channel.data = channelData;
                             channel.lastUpdated = new Date().toISOString();
                         } catch (e) {
@@ -289,7 +316,34 @@ const server = Bun.serve({
                 }
 
                 console.log(`Refreshing data for channel: ${channel.handle}`);
+                
+                // Preserve existing enrichment data before refresh
+                const existingEnrichment = new Map<string, { publishDate?: string; description?: string }>();
+                if (channel.data?.videos) {
+                    for (const video of channel.data.videos) {
+                        if (video.publishDate || video.description) {
+                            existingEnrichment.set(video.videoId, {
+                                publishDate: video.publishDate,
+                                description: video.description,
+                            });
+                        }
+                    }
+                }
+                
                 const channelData = await processChannelForWeb(channel.handle);
+                
+                // Restore enrichment data to matching videos
+                if (existingEnrichment.size > 0 && channelData.videos) {
+                    for (const video of channelData.videos) {
+                        const enrichment = existingEnrichment.get(video.videoId);
+                        if (enrichment) {
+                            video.publishDate = enrichment.publishDate;
+                            video.description = enrichment.description;
+                        }
+                    }
+                    console.log(`  Preserved enrichment data for ${existingEnrichment.size} videos`);
+                }
+                
                 channel.data = channelData;
                 channel.lastUpdated = new Date().toISOString();
                 await saveStore(store);
