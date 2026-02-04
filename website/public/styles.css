@@ -1203,6 +1203,15 @@ body {
     word-break: break-word;
 }
 
+.video-modal-description a {
+    color: #6bb3ff;
+    text-decoration: underline;
+}
+
+.video-modal-description a:hover {
+    color: #9dd0ff;
+}
+
 .video-modal-description[hidden] {
     display: none;
 }

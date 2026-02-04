@@ -1201,6 +1201,16 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+// Convert URLs in text to clickable links
+function linkifyText(text) {
+    if (!text) return '';
+    // First escape HTML to prevent XSS
+    const escaped = escapeHtml(text);
+    // Then convert URLs to links
+    const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
+    return escaped.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
 function showLoading(show) {
     isLoading = show;
     loadingOverlay.hidden = !show;
@@ -1275,10 +1285,10 @@ function openVideoModal(videoData) {
     
     // Description display (if enriched)
     if (description) {
-        videoModalDescription.textContent = description;
+        videoModalDescription.innerHTML = linkifyText(description);
         videoModalDescription.hidden = false;
     } else {
-        videoModalDescription.textContent = '';
+        videoModalDescription.innerHTML = '';
         videoModalDescription.hidden = true;
     }
     
