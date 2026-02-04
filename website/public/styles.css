@@ -573,6 +573,62 @@ body {
     to { transform: rotate(360deg); }
 }
 
+/* Duration Filters in Controls */
+.duration-filters {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 8px 16px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 20px;
+    border: 2px solid rgba(255,255,255,0.2);
+}
+
+.duration-filter-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.duration-filter-group label {
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.7);
+    white-space: nowrap;
+}
+
+.duration-filter-group input[type="number"] {
+    width: 55px;
+    padding: 6px 10px;
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 6px;
+    background: rgba(255,255,255,0.08);
+    color: #fff;
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.3s, background 0.3s;
+    -moz-appearance: textfield;
+}
+
+.duration-filter-group input[type="number"]::-webkit-outer-spin-button,
+.duration-filter-group input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.duration-filter-group input[type="number"]:focus {
+    border-color: #ff0000;
+    background: rgba(255,255,255,0.12);
+}
+
+.duration-filter-group input::placeholder {
+    color: rgba(255,255,255,0.4);
+}
+
+.duration-filter-group .filter-unit {
+    font-size: 0.8rem;
+    color: rgba(255,255,255,0.5);
+}
+
 .sort-buttons {
     display: flex;
     gap: 8px;
