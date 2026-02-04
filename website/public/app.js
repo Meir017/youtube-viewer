@@ -33,6 +33,10 @@ let currentMaxAge = 30;
 let minDurationMinutes = 0;
 let maxDurationMinutes = Infinity;
 
+// Enrichment state
+let enrichmentStatus = null;
+let enrichmentPollInterval = null;
+
 // Virtual scroll state
 let videosVirtualScroll = null;
 let shortsVirtualScroll = null;
@@ -443,6 +447,147 @@ async function refreshCollectionChannels() {
     }
 }
 
+// ==================== ENRICHMENT FUNCTIONS ====================
+
+// Fetch enrichment status for current collection
+async function fetchEnrichmentStatus() {
+    if (!activeCollectionId) return null;
+    
+    try {
+        const response = await fetch(`${API_BASE}/collections/${activeCollectionId}/enrich/status`);
+        if (!response.ok) throw new Error('Failed to fetch enrichment status');
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching enrichment status:', error);
+        return null;
+    }
+}
+
+// Start enrichment for current collection
+async function startEnrichment() {
+    if (!activeCollectionId) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/collections/${activeCollectionId}/enrich`, {
+            method: 'POST',
+        });
+        
+        if (!response.ok) throw new Error('Failed to start enrichment');
+        
+        const data = await response.json();
+        
+        if (data.started) {
+            // Start polling for status updates
+            startEnrichmentPolling();
+        }
+        
+        // Update status immediately
+        enrichmentStatus = await fetchEnrichmentStatus();
+        renderEnrichmentPanel();
+    } catch (error) {
+        showError('Failed to start enrichment');
+        console.error('Enrichment error:', error);
+    }
+}
+
+// Start polling for enrichment status
+function startEnrichmentPolling() {
+    // Clear any existing interval
+    if (enrichmentPollInterval) {
+        clearInterval(enrichmentPollInterval);
+    }
+    
+    enrichmentPollInterval = setInterval(async () => {
+        enrichmentStatus = await fetchEnrichmentStatus();
+        renderEnrichmentPanel();
+        
+        // Stop polling when enrichment is complete
+        if (enrichmentStatus && enrichmentStatus.status !== 'running') {
+            clearInterval(enrichmentPollInterval);
+            enrichmentPollInterval = null;
+            
+            // Refresh video data to show enriched content
+            if (enrichmentStatus.status === 'complete' || enrichmentStatus.status === 'rate-limited') {
+                await loadCollectionChannels(activeCollectionId);
+                renderVideos();
+                renderShorts();
+            }
+        }
+    }, 2000);
+}
+
+// Stop enrichment polling
+function stopEnrichmentPolling() {
+    if (enrichmentPollInterval) {
+        clearInterval(enrichmentPollInterval);
+        enrichmentPollInterval = null;
+    }
+}
+
+// Render the enrichment panel
+function renderEnrichmentPanel() {
+    const panel = document.getElementById('enrichmentPanel');
+    if (!panel) return;
+    
+    if (!enrichmentStatus) {
+        panel.innerHTML = `
+            <div class="enrichment-loading">
+                <span>Loading enrichment status...</span>
+            </div>
+        `;
+        return;
+    }
+    
+    const { status, totalVideos, enrichedVideos, shortsCount, allEnriched, total, enriched, rateLimited } = enrichmentStatus;
+    
+    if (allEnriched && status !== 'running') {
+        // All videos enriched - show success
+        panel.innerHTML = `
+            <div class="enrichment-complete">
+                <span class="enrichment-success-icon">✓</span>
+                <span class="enrichment-success-text">All ${totalVideos} videos enriched</span>
+            </div>
+        `;
+        return;
+    }
+    
+    if (status === 'running') {
+        // Show progress
+        const progress = total > 0 ? Math.round((enriched / total) * 100) : 0;
+        panel.innerHTML = `
+            <div class="enrichment-running">
+                <div class="enrichment-progress-container">
+                    <div class="enrichment-progress-bar" style="width: ${progress}%"></div>
+                </div>
+                <span class="enrichment-progress-text">Enriching videos: ${enriched}/${total} (${progress}%)</span>
+                <span class="enrichment-spinner"></span>
+            </div>
+        `;
+        return;
+    }
+    
+    if (status === 'rate-limited') {
+        // Rate limited - show warning with resume option
+        panel.innerHTML = `
+            <div class="enrichment-warning">
+                <span class="enrichment-warning-icon">⚠️</span>
+                <span class="enrichment-warning-text">Rate limited - ${enrichedVideos}/${totalVideos} videos enriched</span>
+                <button class="enrichment-btn" onclick="startEnrichment()">Resume</button>
+            </div>
+        `;
+        return;
+    }
+    
+    // Idle or incomplete - show enrich button
+    const remaining = totalVideos - enrichedVideos;
+    panel.innerHTML = `
+        <div class="enrichment-idle">
+            <span class="enrichment-status-text">${enrichedVideos}/${totalVideos} videos enriched</span>
+            ${remaining > 0 ? `<button class="enrichment-btn" onclick="startEnrichment()">Enrich ${remaining} videos</button>` : ''}
+        </div>
+    `;
+}
+
 // Filter videos based on active channel, search, and duration
 function filterVideos(videos) {
     const minDurationSec = minDurationMinutes * 60;
@@ -500,12 +645,21 @@ async function loadCollectionChannels(collectionId) {
         if (!response.ok) throw new Error('Failed to load channels');
         channels = await response.json();
         processChannelData();
+        
+        // Fetch enrichment status
+        enrichmentStatus = await fetchEnrichmentStatus();
+        
+        // If enrichment is running, start polling
+        if (enrichmentStatus?.status === 'running') {
+            startEnrichmentPolling();
+        }
     } catch (error) {
         showError('Failed to load channels.');
         console.error('Load channels error:', error);
         channels = [];
         allVideos = [];
         allShorts = [];
+        enrichmentStatus = null;
     } finally {
         showLoading(false);
     }
@@ -671,6 +825,10 @@ async function handleRenameCollection(e) {
 async function selectCollection(id) {
     if (activeCollectionId === id) return;
     
+    // Stop any existing enrichment polling
+    stopEnrichmentPolling();
+    enrichmentStatus = null;
+    
     activeCollectionId = id;
     activeChannel = 'all';
     await loadCollectionChannels(id);
@@ -790,6 +948,7 @@ function renderAll() {
     renderSummaryStats();
     updateUIVisibility();
     renderChannelTabs();
+    renderEnrichmentPanel();
     renderVideos();
     renderShorts();
 }
@@ -957,7 +1116,7 @@ function renderShorts() {
 
 // Render a video card
 function renderVideoCard(video) {
-    const { videoId, title, viewCount, publishedTime, duration, channelTitle, channelColor, channelHandle, channelAvatar } = video;
+    const { videoId, title, viewCount, publishedTime, publishDate, description, duration, channelTitle, channelColor, channelHandle, channelAvatar } = video;
     // Use cached proxy for thumbnail to avoid YouTube throttling
     const thumbnail = `/img/${encodeURIComponent(channelHandle || 'unknown')}/${videoId}/mqdefault`;
     const showChannelIndicator = channels.length > 1;
@@ -965,10 +1124,28 @@ function renderVideoCard(video) {
     const avatarUrl = channelAvatar ? `/avatar/${encodeURIComponent(channelHandle)}?url=${encodeURIComponent(channelAvatar)}` : '';
     
     // Escape data for onclick attribute
-    const videoData = JSON.stringify({ videoId, title, viewCount, publishedTime, channelTitle }).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const videoData = JSON.stringify({ videoId, title, viewCount, publishedTime, publishDate, description, channelTitle }).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    
+    // Date display: show exact date with relative time in parentheses if enriched
+    let dateDisplay = '';
+    if (publishDate) {
+        dateDisplay = `📅 ${escapeHtml(publishDate)}${publishedTime ? ` (${escapeHtml(publishedTime)})` : ''}`;
+    } else if (publishedTime) {
+        dateDisplay = `📅 ${escapeHtml(publishedTime)}`;
+    }
+    
+    // Description toggle (only if enriched)
+    const descriptionHtml = description ? `
+        <div class="video-description">
+            <button class="video-description-toggle" onclick="event.stopPropagation(); toggleDescription(this);">
+                <span class="toggle-icon">▶</span> Description
+            </button>
+            <div class="video-description-content">${escapeHtml(description)}</div>
+        </div>
+    ` : '';
     
     return `
-        <article class="video-card" onclick='openVideoModal(${videoData})' style="cursor: pointer;">
+        <article class="video-card${description ? ' has-description' : ''}" onclick='openVideoModal(${videoData})' style="cursor: pointer;">
             <div class="video-thumbnail">
                 ${showChannelIndicator ? `<span class="channel-indicator" style="--channel-color: ${channelColor};">${avatarUrl ? `<img src="${avatarUrl}" alt="" class="channel-indicator-icon">` : ''}${escapeHtml(channelTitle)}</span>` : ''}
                 <img src="${thumbnail}" alt="${escapeHtml(title)}" loading="lazy">
@@ -978,11 +1155,20 @@ function renderVideoCard(video) {
                 <h3 class="video-title">${escapeHtml(title)}</h3>
                 <div class="video-meta">
                     ${viewCount ? `<span>👁️ ${escapeHtml(viewCount)}</span>` : ''}
-                    ${publishedTime ? `<span>📅 ${escapeHtml(publishedTime)}</span>` : ''}
+                    ${dateDisplay ? `<span>${dateDisplay}</span>` : ''}
                 </div>
+                ${descriptionHtml}
             </div>
         </article>
     `;
+}
+
+// Toggle description visibility
+function toggleDescription(button) {
+    const description = button.nextElementSibling;
+    const icon = button.querySelector('.toggle-icon');
+    const isExpanded = description.classList.toggle('expanded');
+    icon.textContent = isExpanded ? '▼' : '▶';
 }
 
 // Render a short card
@@ -1053,11 +1239,12 @@ const videoModalTitle = document.getElementById('videoModalTitle');
 const videoModalChannel = document.getElementById('videoModalChannel');
 const videoModalViews = document.getElementById('videoModalViews');
 const videoModalDate = document.getElementById('videoModalDate');
+const videoModalDescription = document.getElementById('videoModalDescription');
 const videoModalLink = document.getElementById('videoModalLink');
 const closeVideoModalBtn = document.getElementById('closeVideoModal');
 
 function openVideoModal(videoData) {
-    const { videoId, title, viewCount, publishedTime, channelTitle, isShort } = videoData;
+    const { videoId, title, viewCount, publishedTime, publishDate, description, channelTitle, isShort } = videoData;
     
     // Build YouTube embed URL
     const embedUrl = isShort 
@@ -1076,7 +1263,25 @@ function openVideoModal(videoData) {
     videoModalTitle.textContent = title || 'Untitled';
     videoModalChannel.textContent = channelTitle ? `📺 ${channelTitle}` : '';
     videoModalViews.textContent = viewCount ? `👁️ ${viewCount}` : '';
-    videoModalDate.textContent = publishedTime ? `📅 ${publishedTime}` : '';
+    
+    // Date display: show exact date with relative time if enriched
+    if (publishDate) {
+        videoModalDate.textContent = `📅 ${publishDate}${publishedTime ? ` (${publishedTime})` : ''}`;
+    } else if (publishedTime) {
+        videoModalDate.textContent = `📅 ${publishedTime}`;
+    } else {
+        videoModalDate.textContent = '';
+    }
+    
+    // Description display (if enriched)
+    if (description) {
+        videoModalDescription.textContent = description;
+        videoModalDescription.hidden = false;
+    } else {
+        videoModalDescription.textContent = '';
+        videoModalDescription.hidden = true;
+    }
+    
     videoModalLink.href = youtubeUrl;
     
     // Show modal

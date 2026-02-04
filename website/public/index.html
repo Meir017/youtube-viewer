@@ -103,6 +103,13 @@
                     <input type="number" id="maxDurationInput" min="0" placeholder="∞">
                     <span class="filter-unit">min</span>
                 </div>
+                
+                <!-- Enrichment Panel -->
+                <div class="filter-group enrichment-panel-container">
+                    <div id="enrichmentPanel" class="enrichment-panel">
+                        <!-- Enrichment status will be rendered here -->
+                    </div>
+                </div>
             </div>
             
             <!-- Channel Tabs (within selected collection) -->
@@ -194,6 +201,7 @@
                         <span id="videoModalViews"></span>
                         <span id="videoModalDate"></span>
                     </div>
+                    <div id="videoModalDescription" class="video-modal-description" hidden></div>
                     <a id="videoModalLink" href="" target="_blank" rel="noopener noreferrer" class="video-modal-youtube-link">Open in YouTube ↗</a>
                 </div>
             </div>

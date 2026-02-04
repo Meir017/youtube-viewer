@@ -1,24 +1,16 @@
 import { join } from 'path';
 import { processChannelForWeb, type WebChannelData } from './channel-processor';
 import { getCachedImage, getCachedAvatar, getCacheStats, clearCache } from './image-cache';
+import { 
+    getEnrichmentJob, 
+    getEnrichmentStatus, 
+    startEnrichment,
+    type Collection,
+    type StoredChannel 
+} from './video-enrichment';
 
 const DATA_FILE = join(import.meta.dir, 'data', 'channels.json');
 const PUBLIC_DIR = join(import.meta.dir, 'public');
-
-interface StoredChannel {
-    id: string;
-    handle: string;
-    addedAt: string;
-    data?: WebChannelData;
-    lastUpdated?: string;
-}
-
-interface Collection {
-    id: string;
-    name: string;
-    channels: StoredChannel[];
-    createdAt: string;
-}
 
 interface ChannelsStore {
     collections: Collection[];
@@ -303,6 +295,38 @@ const server = Bun.serve({
                 await saveStore(store);
 
                 return Response.json(channel, { headers: corsHeaders });
+            }
+
+            // ==================== ENRICHMENT API ====================
+
+            // GET /api/collections/:collectionId/enrich/status - Get enrichment status
+            const enrichStatusMatch = path.match(/^\/api\/collections\/([^/]+)\/enrich\/status$/);
+            if (enrichStatusMatch && req.method === 'GET') {
+                const collectionId = enrichStatusMatch[1];
+                const store = await loadStore();
+                const collection = store.collections.find(c => c.id === collectionId);
+                
+                if (!collection) {
+                    return Response.json({ error: 'Collection not found' }, { status: 404, headers: corsHeaders });
+                }
+
+                const status = getEnrichmentStatus(collection);
+                return Response.json(status, { headers: corsHeaders });
+            }
+
+            // POST /api/collections/:collectionId/enrich - Start enrichment job
+            const enrichMatch = path.match(/^\/api\/collections\/([^/]+)\/enrich$/);
+            if (enrichMatch && req.method === 'POST') {
+                const collectionId = enrichMatch[1];
+                const store = await loadStore();
+                const collection = store.collections.find(c => c.id === collectionId);
+                
+                if (!collection) {
+                    return Response.json({ error: 'Collection not found' }, { status: 404, headers: corsHeaders });
+                }
+
+                const result = startEnrichment(collection, () => saveStore(store));
+                return Response.json(result, { headers: corsHeaders });
             }
 
             return Response.json({ error: 'Not found' }, { status: 404, headers: corsHeaders });
