@@ -686,6 +686,23 @@ body {
     text-overflow: ellipsis;
     white-space: nowrap;
     z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: auto;
+    max-height: 26px;
+}
+
+.channel-indicator img {
+    width: 14px !important;
+    height: 14px !important;
+    min-width: 14px;
+    max-width: 14px;
+    min-height: 14px;
+    max-height: 14px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
 }
 
 .video-info {

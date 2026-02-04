@@ -522,12 +522,14 @@ function processChannelData() {
         const videos = ch.data?.videos || [];
         const channelTitle = ch.data?.channel?.title || ch.handle;
         const channelHandle = ch.handle; // Store handle for image proxy
+        const channelAvatar = ch.data?.channel?.avatar || ''; // Store avatar for channel indicator
         
         videos.forEach((v, idx) => {
             const videoWithChannel = {
                 ...v,
                 channelTitle,
                 channelHandle,
+                channelAvatar,
                 channelIndex,
                 channelColor: CHANNEL_COLORS[channelIndex % CHANNEL_COLORS.length],
                 originalIndex: allVideos.length + allShorts.length,
@@ -955,17 +957,19 @@ function renderShorts() {
 
 // Render a video card
 function renderVideoCard(video) {
-    const { videoId, title, viewCount, publishedTime, duration, channelTitle, channelColor, channelHandle } = video;
+    const { videoId, title, viewCount, publishedTime, duration, channelTitle, channelColor, channelHandle, channelAvatar } = video;
     // Use cached proxy for thumbnail to avoid YouTube throttling
     const thumbnail = `/img/${encodeURIComponent(channelHandle || 'unknown')}/${videoId}/mqdefault`;
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     const showChannelIndicator = channels.length > 1;
+    // Use cached proxy for channel avatar
+    const avatarUrl = channelAvatar ? `/avatar/${encodeURIComponent(channelHandle)}?url=${encodeURIComponent(channelAvatar)}` : '';
     
     return `
         <article class="video-card">
             <a href="${url}" target="_blank" rel="noopener noreferrer">
                 <div class="video-thumbnail">
-                    ${showChannelIndicator ? `<span class="channel-indicator" style="--channel-color: ${channelColor};">${escapeHtml(channelTitle)}</span>` : ''}
+                    ${showChannelIndicator ? `<span class="channel-indicator" style="--channel-color: ${channelColor};">${avatarUrl ? `<img src="${avatarUrl}" alt="" class="channel-indicator-icon">` : ''}${escapeHtml(channelTitle)}</span>` : ''}
                     <img src="${thumbnail}" alt="${escapeHtml(title)}" loading="lazy">
                     ${duration ? `<span class="video-duration">${escapeHtml(duration)}</span>` : ''}
                 </div>
@@ -983,18 +987,20 @@ function renderVideoCard(video) {
 
 // Render a short card
 function renderShortCard(short) {
-    const { videoId, title, viewCount, channelTitle, channelColor, channelHandle } = short;
+    const { videoId, title, viewCount, channelTitle, channelColor, channelHandle, channelAvatar } = short;
     // Use cached proxy for thumbnail to avoid YouTube throttling
     const thumbnail = `/img/${encodeURIComponent(channelHandle || 'unknown')}/${videoId}/oar2`;
     const url = `https://www.youtube.com/shorts/${videoId}`;
     const showChannelIndicator = channels.length > 1;
+    // Use cached proxy for channel avatar
+    const avatarUrl = channelAvatar ? `/avatar/${encodeURIComponent(channelHandle)}?url=${encodeURIComponent(channelAvatar)}` : '';
     
     return `
         <article class="short-card">
             <a href="${url}" target="_blank" rel="noopener noreferrer">
                 <div class="short-thumbnail">
                     <span class="short-badge">Short</span>
-                    ${showChannelIndicator ? `<span class="channel-indicator" style="--channel-color: ${channelColor}; top: 35px;">${escapeHtml(channelTitle)}</span>` : ''}
+                    ${showChannelIndicator ? `<span class="channel-indicator" style="--channel-color: ${channelColor}; top: 35px;">${avatarUrl ? `<img src="${avatarUrl}" alt="" class="channel-indicator-icon">` : ''}${escapeHtml(channelTitle)}</span>` : ''}
                     <img src="${thumbnail}" alt="${escapeHtml(title)}" loading="lazy">
                 </div>
                 <div class="short-info">
