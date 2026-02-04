@@ -113,6 +113,41 @@ Then open http://localhost:3000 in your browser.
 - **Remove channels** you no longer want to follow
 - **Persistent storage** - your channels are saved between sessions
 
+## Website Tools
+
+Offline CLI tools for managing the website database (`website/data/channels.json`).
+
+### Enrich Videos
+
+Enriches un-enriched videos with publish dates and descriptions by fetching metadata from YouTube.
+
+```bash
+# Run enrichment on all collections
+bun run tools:enrich
+
+# Preview what would be enriched (no changes)
+bun run tools:enrich -- --dry-run
+
+# Enrich a specific collection with a limit
+bun run tools:enrich -- --collection=default-collection --limit=100
+
+# Adjust concurrency and delay for rate limiting
+bun run tools:enrich -- --concurrency=3 --delay=3000
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--collection=<id>` | Only enrich a specific collection | all |
+| `--concurrency=<n>` | Number of concurrent requests | 5 |
+| `--delay=<ms>` | Delay between requests in ms | 2000 |
+| `--dry-run` | Show what would be enriched without changes | false |
+| `--limit=<n>` | Max videos to enrich per run | unlimited |
+
+The tool automatically:
+- Saves progress every 10 seconds
+- Stops gracefully on rate limiting (HTTP 429)
+- Skips already-enriched videos and shorts
+
 ## Project Structure
 
 ```
@@ -131,6 +166,8 @@ youtube-viewer/
 │   │   ├── styles.css
 │   │   └── app.js
 │   └── data/               # Channel storage
+├── website-tools/
+│   └── enrich.ts           # Offline video enrichment tool
 ├── package.json            # Bun project configuration
 ├── tsconfig.json           # TypeScript configuration
 ├── LICENSE

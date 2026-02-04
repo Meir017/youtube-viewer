@@ -8,6 +8,7 @@
     "start": "bun run generator/index.ts",
     "web": "bun run website/server.ts",
     "dev-web": "bun --watch run website/server.ts",
+    "tools:enrich": "bun run website-tools/enrich.ts",
     "tech": "bun run generator/index.ts --channel=@GitHub,@code,@MicrosoftDeveloper,@dotnet,@GoogleDevelopers,@shanselman,@nickchapsas,@anthropic-ai,@openai --html --output=dist/tech.html --max-age=30 --limit=500",
     "movies": "bun run generator/index.ts --channel=@peacock,@Netflix,@PrimeVideo,@HBO,@Hulu,@AppleTV,@20thCenturyStudios,@UniversalPictures,@AmazonMGMStudios,@LionsgateMovies,@BoxofficeOneMedia,@WarnerBros,@disneyplus,@hbomax,@A24,@MovieGasm,@FocusFeatures,@paramountpictures,@MovieTrailersSourceHD,@sonypictures --html --output=dist/movies.html --max-age=1460 --limit=500 --min-length=60",
     "podcasts": "bun run generator/index.ts --channel=@lexfriedman,@Alex.kantrowitz,@DwarkeshPatel,@CleoAbram,@DecoderPod,@Github,@openai,@anthropic-ai,@stripe,@Meter-Network --html --output=dist/tech-podcasts.html --max-age=730 --limit=500 --min-length=1800 --enrich --enrich-concurrency=10"
