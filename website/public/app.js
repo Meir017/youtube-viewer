@@ -521,11 +521,13 @@ function processChannelData() {
     channels.forEach((ch, channelIndex) => {
         const videos = ch.data?.videos || [];
         const channelTitle = ch.data?.channel?.title || ch.handle;
+        const channelHandle = ch.handle; // Store handle for image proxy
         
         videos.forEach((v, idx) => {
             const videoWithChannel = {
                 ...v,
                 channelTitle,
+                channelHandle,
                 channelIndex,
                 channelColor: CHANNEL_COLORS[channelIndex % CHANNEL_COLORS.length],
                 originalIndex: allVideos.length + allShorts.length,
@@ -855,10 +857,12 @@ function renderChannelTabs() {
         const title = escapeHtml(channelData.title || ch.handle);
         const avatar = channelData.avatar || '';
         const color = CHANNEL_COLORS[idx % CHANNEL_COLORS.length];
+        // Use cached proxy for avatar to avoid YouTube throttling
+        const avatarUrl = avatar ? `/avatar/${encodeURIComponent(ch.handle)}?url=${encodeURIComponent(avatar)}` : '';
         
         return `
             <button class="channel-tab ${activeChannel === String(idx) ? 'active' : ''}" data-channel="${idx}" style="--channel-color: ${color};">
-                ${avatar ? `<img src="${escapeHtml(avatar)}" alt="${title}" class="channel-avatar" loading="lazy">` : `<span class="channel-dot"></span>`}
+                ${avatarUrl ? `<img src="${avatarUrl}" alt="${title}" class="channel-avatar" loading="lazy">` : `<span class="channel-dot"></span>`}
                 ${title}
                 <span class="remove-channel" onclick="deleteChannel('${ch.id}', event)" title="Remove channel">✕</span>
             </button>
@@ -951,8 +955,9 @@ function renderShorts() {
 
 // Render a video card
 function renderVideoCard(video) {
-    const { videoId, title, viewCount, publishedTime, duration, channelTitle, channelColor } = video;
-    const thumbnail = `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+    const { videoId, title, viewCount, publishedTime, duration, channelTitle, channelColor, channelHandle } = video;
+    // Use cached proxy for thumbnail to avoid YouTube throttling
+    const thumbnail = `/img/${encodeURIComponent(channelHandle || 'unknown')}/${videoId}/mqdefault`;
     const url = `https://www.youtube.com/watch?v=${videoId}`;
     const showChannelIndicator = channels.length > 1;
     
@@ -978,8 +983,9 @@ function renderVideoCard(video) {
 
 // Render a short card
 function renderShortCard(short) {
-    const { videoId, title, viewCount, channelTitle, channelColor } = short;
-    const thumbnail = `https://i.ytimg.com/vi/${videoId}/oar2.jpg`;
+    const { videoId, title, viewCount, channelTitle, channelColor, channelHandle } = short;
+    // Use cached proxy for thumbnail to avoid YouTube throttling
+    const thumbnail = `/img/${encodeURIComponent(channelHandle || 'unknown')}/${videoId}/oar2`;
     const url = `https://www.youtube.com/shorts/${videoId}`;
     const showChannelIndicator = channels.length > 1;
     

@@ -1,5 +1,6 @@
 import { join } from 'path';
 import { processChannelForWeb, type WebChannelData } from './channel-processor';
+import { getCachedImage, getCachedAvatar, getCacheStats, clearCache } from './image-cache';
 
 const DATA_FILE = join(import.meta.dir, 'data', 'channels.json');
 const PUBLIC_DIR = join(import.meta.dir, 'public');
@@ -305,6 +306,95 @@ const server = Bun.serve({
             }
 
             return Response.json({ error: 'Not found' }, { status: 404, headers: corsHeaders });
+        }
+
+        // ==================== IMAGE PROXY ROUTES ====================
+        
+        // GET /img/:channelHandle/:videoId/:type - Proxy and cache YouTube thumbnails
+        // Example: /img/@GitHub/abc123xyz/mqdefault
+        const imageProxyMatch = path.match(/^\/img\/(@?[^/]+)\/([^/]+)\/([^/]+)$/);
+        if (imageProxyMatch) {
+            const channelHandle = decodeURIComponent(imageProxyMatch[1]);
+            const videoId = imageProxyMatch[2];
+            const type = imageProxyMatch[3];
+            
+            const result = await getCachedImage(channelHandle, videoId, type);
+            
+            if (result.error || !result.file) {
+                // Return a placeholder or error response
+                return new Response(result.error || 'Image not found', {
+                    status: 404,
+                    headers: {
+                        'Content-Type': 'text/plain',
+                        'Cache-Control': 'no-cache',
+                    },
+                });
+            }
+            
+            // Pass BunFile/Blob directly to Response for efficient streaming
+            return new Response(result.file, {
+                headers: {
+                    'Content-Type': result.contentType,
+                    'Cache-Control': 'public, max-age=86400', // Browser cache for 1 day
+                    'X-Cache': result.fromCache ? 'HIT' : 'MISS',
+                },
+            });
+        }
+        
+        // GET /avatar/:channelHandle - Proxy and cache channel avatars
+        // Example: /avatar/@GitHub?url=https://yt3.googleusercontent.com/...
+        const avatarProxyMatch = path.match(/^\/avatar\/(@?[^/]+)$/);
+        if (avatarProxyMatch) {
+            const channelHandle = decodeURIComponent(avatarProxyMatch[1]);
+            const avatarUrl = url.searchParams.get('url');
+            
+            if (!avatarUrl) {
+                return new Response('Missing avatar URL parameter', {
+                    status: 400,
+                    headers: { 'Content-Type': 'text/plain' },
+                });
+            }
+            
+            const result = await getCachedAvatar(channelHandle, avatarUrl);
+            
+            if (result.error || !result.file) {
+                return new Response(result.error || 'Avatar not found', {
+                    status: 404,
+                    headers: {
+                        'Content-Type': 'text/plain',
+                        'Cache-Control': 'no-cache',
+                    },
+                });
+            }
+            
+            // Pass BunFile/Blob directly to Response for efficient streaming
+            return new Response(result.file, {
+                headers: {
+                    'Content-Type': result.contentType,
+                    'Cache-Control': 'public, max-age=604800', // Browser cache for 1 week (avatars change rarely)
+                    'X-Cache': result.fromCache ? 'HIT' : 'MISS',
+                },
+            });
+        }
+        
+        // GET /api/cache/stats - Get cache statistics
+        if (path === '/api/cache/stats' && req.method === 'GET') {
+            const stats = await getCacheStats();
+            return Response.json(stats, {
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                },
+            });
+        }
+        
+        // DELETE /api/cache - Clear the image cache
+        if (path === '/api/cache' && req.method === 'DELETE') {
+            const count = await clearCache();
+            return Response.json({ cleared: count }, {
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                },
+            });
         }
 
         // Static file serving

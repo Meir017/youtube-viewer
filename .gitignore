@@ -129,6 +129,9 @@ dist
 # Website data (user channels)
 website/data/channels.json
 
+# Website image cache
+website/cache/
+
 # yarn v3
 .pnp.*
 .yarn/*
