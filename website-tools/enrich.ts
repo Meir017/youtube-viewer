@@ -23,6 +23,51 @@ const DEFAULT_CONCURRENCY = 5;
 const DEFAULT_DELAY_MS = 2000;
 const SAVE_INTERVAL_MS = 10000; // Save every 10 seconds
 
+// ANSI color codes
+const colors = {
+    reset: '\x1b[0m',
+    bold: '\x1b[1m',
+    dim: '\x1b[2m',
+    green: '\x1b[32m',
+    yellow: '\x1b[33m',
+    blue: '\x1b[34m',
+    magenta: '\x1b[35m',
+    cyan: '\x1b[36m',
+    red: '\x1b[31m',
+    gray: '\x1b[90m',
+};
+
+// Progress bar helper
+function progressBar(current: number, total: number, width: number = 30): string {
+    const pct = total > 0 ? current / total : 0;
+    const filled = Math.round(pct * width);
+    const empty = width - filled;
+    const bar = '█'.repeat(filled) + '░'.repeat(empty);
+    return `${colors.cyan}${bar}${colors.reset}`;
+}
+
+// Format duration
+function formatDuration(ms: number): string {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    
+    if (hours > 0) {
+        return `${hours}h ${minutes % 60}m`;
+    } else if (minutes > 0) {
+        return `${minutes}m ${seconds % 60}s`;
+    } else if (seconds > 0) {
+        return `${seconds}s`;
+    }
+    return `${(ms / 1000).toFixed(2)}s`;
+}
+
+// Truncate string with ellipsis
+function truncate(str: string, maxLen: number): string {
+    if (str.length <= maxLen) return str;
+    return str.substring(0, maxLen - 1) + '…';
+}
+
 // Types matching website structure
 interface StoredChannel {
     id: string;
@@ -209,49 +254,53 @@ function getStats(data: ChannelsData): {
 async function runEnrichment(): Promise<void> {
     const { collectionId, concurrency, delay, dryRun, limit } = parseArgs();
 
-    console.log('╔════════════════════════════════════════════════════════╗');
-    console.log('║           Video Enrichment Tool                        ║');
-    console.log('╚════════════════════════════════════════════════════════╝');
+    console.log();
+    console.log(`${colors.bold}${colors.cyan}╔════════════════════════════════════════════════════════╗${colors.reset}`);
+    console.log(`${colors.bold}${colors.cyan}║           Video Enrichment Tool                        ║${colors.reset}`);
+    console.log(`${colors.bold}${colors.cyan}╚════════════════════════════════════════════════════════╝${colors.reset}`);
     console.log();
 
     // Load database
-    console.log(`📂 Loading database from ${DATA_FILE}...`);
+    console.log(`${colors.dim}📂 Loading database...${colors.reset}`);
     const data = await loadData();
 
     // Show current stats
     const stats = getStats(data);
     console.log();
-    console.log('📊 Current Database Stats:');
-    console.log(`   Collections: ${stats.totalCollections}`);
-    console.log(`   Channels:    ${stats.totalChannels}`);
-    console.log(`   Videos:      ${stats.totalVideos} (+ ${stats.shortsCount} shorts)`);
-    console.log(`   Enriched:    ${stats.enrichedVideos} (${((stats.enrichedVideos / stats.totalVideos) * 100).toFixed(1)}%)`);
-    console.log(`   Needing:     ${stats.needingEnrichment}`);
+    console.log(`${colors.bold}📊 Database Overview${colors.reset}`);
+    console.log(`   ${colors.dim}Collections:${colors.reset} ${stats.totalCollections}`);
+    console.log(`   ${colors.dim}Channels:${colors.reset}    ${stats.totalChannels}`);
+    console.log(`   ${colors.dim}Videos:${colors.reset}      ${stats.totalVideos} ${colors.gray}(+ ${stats.shortsCount} shorts)${colors.reset}`);
+    
+    const enrichedPct = stats.totalVideos > 0 ? ((stats.enrichedVideos / stats.totalVideos) * 100).toFixed(1) : '0';
+    console.log(`   ${colors.green}Enriched:${colors.reset}    ${stats.enrichedVideos} ${colors.gray}(${enrichedPct}%)${colors.reset}`);
+    console.log(`   ${colors.yellow}Pending:${colors.reset}     ${stats.needingEnrichment}`);
     console.log();
 
     // Collect videos to enrich
     let videosToEnrich = collectVideosToEnrich(data, collectionId);
     
     if (videosToEnrich.length === 0) {
-        console.log('✅ All videos are already enriched!');
+        console.log(`${colors.green}✅ All videos are already enriched!${colors.reset}`);
         return;
     }
 
     // Apply limit
     if (limit && videosToEnrich.length > limit) {
-        console.log(`📋 Limiting to ${limit} videos (of ${videosToEnrich.length} total)`);
+        console.log(`${colors.yellow}📋 Limiting to ${limit} videos${colors.reset} ${colors.dim}(of ${videosToEnrich.length} total)${colors.reset}`);
         videosToEnrich = videosToEnrich.slice(0, limit);
     }
 
     // Show what will be enriched
-    console.log(`🎯 Found ${videosToEnrich.length} videos to enrich`);
+    console.log(`${colors.bold}🎯 Enrichment Plan${colors.reset}`);
+    console.log(`   ${colors.dim}Videos:${colors.reset}      ${videosToEnrich.length}`);
     
     if (collectionId) {
-        console.log(`   Filtering: collection "${collectionId}"`);
+        console.log(`   ${colors.dim}Filter:${colors.reset}      collection "${collectionId}"`);
     }
     
-    console.log(`   Concurrency: ${concurrency}`);
-    console.log(`   Delay: ${delay}ms between requests`);
+    console.log(`   ${colors.dim}Concurrency:${colors.reset} ${concurrency} workers`);
+    console.log(`   ${colors.dim}Delay:${colors.reset}       ${delay}ms`);
     console.log();
 
     // Group by collection for display
@@ -260,24 +309,27 @@ async function runEnrichment(): Promise<void> {
         const key = v.collectionName;
         collectionGroups.set(key, (collectionGroups.get(key) || 0) + 1);
     }
-    console.log('📝 Videos by collection:');
+    console.log(`${colors.dim}By collection:${colors.reset}`);
     for (const [name, count] of collectionGroups) {
-        console.log(`   ${name}: ${count} videos`);
+        console.log(`   ${colors.magenta}${name}${colors.reset}: ${count} videos`);
     }
     console.log();
 
     if (dryRun) {
-        console.log('🔍 DRY RUN - no changes will be made');
+        console.log(`${colors.yellow}🔍 DRY RUN${colors.reset} ${colors.dim}- no changes will be made${colors.reset}`);
         console.log();
-        console.log('First 10 videos that would be enriched:');
+        console.log(`${colors.dim}Sample videos that would be enriched:${colors.reset}`);
         for (const video of videosToEnrich.slice(0, 10)) {
-            console.log(`   [${video.collectionName}] ${video.channelHandle}: ${video.title.substring(0, 50)}...`);
+            console.log(`   ${colors.magenta}${video.channelHandle}${colors.reset} ${colors.dim}${truncate(video.title, 50)}${colors.reset}`);
+        }
+        if (videosToEnrich.length > 10) {
+            console.log(`   ${colors.gray}... and ${videosToEnrich.length - 10} more${colors.reset}`);
         }
         return;
     }
 
     // Run enrichment
-    console.log('🚀 Starting enrichment...');
+    console.log(`${colors.bold}🚀 Starting enrichment...${colors.reset}`);
     console.log();
 
     let enriched = 0;
@@ -285,6 +337,7 @@ async function runEnrichment(): Promise<void> {
     let rateLimited = false;
     let lastSaveTime = Date.now();
     let nextIndex = 0;
+    const startTime = Date.now();
 
     function getNextIndex(): number {
         if (rateLimited) return -1;
@@ -299,8 +352,34 @@ async function runEnrichment(): Promise<void> {
         if (now - lastSaveTime >= SAVE_INTERVAL_MS) {
             lastSaveTime = now;
             await saveData(data);
-            console.log(`   💾 Progress saved (${enriched} enriched)`);
+            console.log(`   ${colors.blue}💾 Progress saved${colors.reset}`);
         }
+    }
+
+    function printProgress(videoRef: VideoRef, success: boolean): void {
+        const total = videosToEnrich.length;
+        const completed = enriched + failed;
+        const pct = ((completed / total) * 100).toFixed(0);
+        
+        // Calculate ETA
+        const elapsed = Date.now() - startTime;
+        const avgTimePerVideo = completed > 0 ? elapsed / completed : 0;
+        const remaining = total - completed;
+        const eta = avgTimePerVideo * remaining;
+        
+        const status = success 
+            ? `${colors.green}✓${colors.reset}` 
+            : `${colors.red}✗${colors.reset}`;
+        
+        const bar = progressBar(completed, total, 15);
+        const pctStr = `${colors.bold}${pct.padStart(3)}%${colors.reset}`;
+        const countStr = `${colors.gray}${completed}/${total}${colors.reset}`;
+        const etaStr = remaining > 0 ? `${colors.dim}${formatDuration(eta)}${colors.reset}` : '';
+        
+        const channelStr = `${colors.magenta}${truncate(videoRef.channelHandle, 12)}${colors.reset}`;
+        const titleStr = `${colors.dim}${truncate(videoRef.title, 30)}${colors.reset}`;
+        
+        console.log(`${status} ${bar} ${pctStr} ${countStr} ${channelStr} ${titleStr} ${etaStr}`);
     }
 
     async function processVideo(index: number): Promise<boolean> {
@@ -320,25 +399,21 @@ async function runEnrichment(): Promise<void> {
             }
             
             enriched++;
-            
-            if (enriched % 10 === 0 || enriched === videosToEnrich.length) {
-                const pct = ((enriched / videosToEnrich.length) * 100).toFixed(1);
-                console.log(`   ✓ Progress: ${enriched}/${videosToEnrich.length} (${pct}%)${failed > 0 ? ` - ${failed} failed` : ''}`);
-            }
+            printProgress(videoRef, true);
             
             await maybeSave();
             return true;
         } catch (err: any) {
             if (err.message?.includes('429') || err.message?.includes('Too Many Requests')) {
-                console.warn(`   ⚠️  Rate limited (HTTP 429) - stopping enrichment`);
+                console.log();
+                console.log(`   ${colors.yellow}⚠️  Rate limited (HTTP 429) - stopping enrichment${colors.reset}`);
                 rateLimited = true;
                 return false;
             }
             failed++;
-            if (failed <= 5) {
-                console.warn(`   ❌ Failed ${videoRef.videoId}: ${err.message}`);
-            } else if (failed === 6) {
-                console.warn(`   (suppressing further failure messages)`);
+            printProgress(videoRef, false);
+            if (failed <= 3) {
+                console.log(`      ${colors.red}└─ ${err.message}${colors.reset}`);
             }
             return true;
         }
@@ -374,17 +449,28 @@ async function runEnrichment(): Promise<void> {
 
     // Final save
     await saveData(data);
+    
+    const totalTime = Date.now() - startTime;
 
     console.log();
-    console.log('════════════════════════════════════════════════════════');
-    console.log('📊 Enrichment Complete');
-    console.log(`   ✅ Enriched: ${enriched}`);
-    console.log(`   ❌ Failed:   ${failed}`);
-    if (rateLimited) {
-        console.log(`   ⚠️  Stopped due to rate limiting`);
-        console.log(`   💡 Try again later with --delay=3000 or higher`);
+    console.log(`${colors.bold}════════════════════════════════════════════════════════${colors.reset}`);
+    console.log(`${colors.bold}📊 Enrichment Complete${colors.reset}`);
+    console.log();
+    console.log(`   ${colors.green}✅ Enriched:${colors.reset}  ${enriched}`);
+    if (failed > 0) {
+        console.log(`   ${colors.red}❌ Failed:${colors.reset}    ${failed}`);
     }
-    console.log('════════════════════════════════════════════════════════');
+    console.log(`   ${colors.blue}⏱️  Duration:${colors.reset} ${formatDuration(totalTime)}`);
+    if (enriched > 0) {
+        const avgTime = totalTime / enriched;
+        console.log(`   ${colors.dim}   Avg:      ${formatDuration(avgTime)}/video${colors.reset}`);
+    }
+    if (rateLimited) {
+        console.log();
+        console.log(`   ${colors.yellow}⚠️  Stopped due to rate limiting${colors.reset}`);
+        console.log(`   ${colors.dim}💡 Try again later with --delay=3000 or higher${colors.reset}`);
+    }
+    console.log(`${colors.bold}════════════════════════════════════════════════════════${colors.reset}`);
 }
 
 // Run
