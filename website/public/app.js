@@ -41,6 +41,9 @@ let enrichmentPollInterval = null;
 let videosVirtualScroll = null;
 let shortsVirtualScroll = null;
 
+// Video data registry for click handlers (avoids inline JSON escaping issues)
+const videoDataRegistry = new Map();
+
 // Virtual Scroll Grid Class
 class VirtualScrollGrid {
     constructor(container, config, renderItem) {
@@ -1123,8 +1126,9 @@ function renderVideoCard(video) {
     // Use cached proxy for channel avatar
     const avatarUrl = channelAvatar ? `/avatar/${encodeURIComponent(channelHandle)}?url=${encodeURIComponent(channelAvatar)}` : '';
     
-    // Escape data for onclick attribute
-    const videoData = JSON.stringify({ videoId, title, viewCount, publishedTime, publishDate, description, channelTitle }).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    // Store video data in registry to avoid inline JSON escaping issues
+    const videoData = { videoId, title, viewCount, publishedTime, publishDate, description, channelTitle };
+    videoDataRegistry.set(videoId, videoData);
     
     // Date display: show exact date with relative time in parentheses if enriched
     let dateDisplay = '';
@@ -1145,7 +1149,7 @@ function renderVideoCard(video) {
     ` : '';
     
     return `
-        <article class="video-card${description ? ' has-description' : ''}" onclick='openVideoModal(${videoData})' style="cursor: pointer;">
+        <article class="video-card${description ? ' has-description' : ''}" onclick="openVideoModalById('${videoId}')" style="cursor: pointer;">
             <div class="video-thumbnail">
                 ${showChannelIndicator ? `<span class="channel-indicator" style="--channel-color: ${channelColor};">${avatarUrl ? `<img src="${avatarUrl}" alt="" class="channel-indicator-icon">` : ''}${escapeHtml(channelTitle)}</span>` : ''}
                 <img src="${thumbnail}" alt="${escapeHtml(title)}" loading="lazy">
@@ -1180,11 +1184,12 @@ function renderShortCard(short) {
     // Use cached proxy for channel avatar
     const avatarUrl = channelAvatar ? `/avatar/${encodeURIComponent(channelHandle)}?url=${encodeURIComponent(channelAvatar)}` : '';
     
-    // Escape data for onclick attribute
-    const shortData = JSON.stringify({ videoId, title: title || 'Untitled Short', viewCount, channelTitle, isShort: true }).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    // Store short data in registry to avoid inline JSON escaping issues
+    const shortData = { videoId, title: title || 'Untitled Short', viewCount, channelTitle, isShort: true };
+    videoDataRegistry.set(videoId, shortData);
     
     return `
-        <article class="short-card" onclick='openVideoModal(${shortData})' style="cursor: pointer;">
+        <article class="short-card" onclick="openVideoModalById('${videoId}')" style="cursor: pointer;">
             <div class="short-thumbnail">
                 <span class="short-badge">Short</span>
                 ${showChannelIndicator ? `<span class="channel-indicator" style="--channel-color: ${channelColor}; top: 35px;">${avatarUrl ? `<img src="${avatarUrl}" alt="" class="channel-indicator-icon">` : ''}${escapeHtml(channelTitle)}</span>` : ''}
@@ -1242,6 +1247,16 @@ const videoModalDate = document.getElementById('videoModalDate');
 const videoModalDescription = document.getElementById('videoModalDescription');
 const videoModalLink = document.getElementById('videoModalLink');
 const closeVideoModalBtn = document.getElementById('closeVideoModal');
+
+// Open video modal by ID (looks up data from registry)
+function openVideoModalById(videoId) {
+    const videoData = videoDataRegistry.get(videoId);
+    if (videoData) {
+        openVideoModal(videoData);
+    } else {
+        console.error('Video data not found for ID:', videoId);
+    }
+}
 
 function openVideoModal(videoData) {
     const { videoId, title, viewCount, publishedTime, publishDate, description, channelTitle, isShort } = videoData;
