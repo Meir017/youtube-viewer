@@ -69,6 +69,20 @@ export function isVideoShort(renderer: any): boolean {
     return false;
 }
 
+export function isMembersOnlyVideo(renderer: any): boolean {
+    if (!renderer) return false;
+    
+    const badges = renderer.badges || [];
+    for (const badge of badges) {
+        const badgeRenderer = badge.metadataBadgeRenderer;
+        if (badgeRenderer?.style === 'BADGE_STYLE_TYPE_MEMBERS_ONLY') {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
 export function extractVideoFromRenderer(renderer: any): Video {
     return {
         videoId: renderer.videoId,

@@ -1,5 +1,5 @@
 import { log } from './logger';
-import { extractVideoFromRenderer } from './utils';
+import { extractVideoFromRenderer, isMembersOnlyVideo } from './utils';
 import type {
     Video,
     Short,
@@ -96,7 +96,7 @@ export function findVideosTabData(data: any): VideosTabResult {
                 
                 for (const item of contents) {
                     const renderer = item.richItemRenderer?.content?.videoRenderer;
-                    if (renderer) {
+                    if (renderer && !isMembersOnlyVideo(renderer)) {
                         videos.push(extractVideoFromRenderer(renderer));
                     }
                     
@@ -114,7 +114,7 @@ export function findVideosTabData(data: any): VideosTabResult {
                     
                     for (const item of items) {
                         const renderer = item.gridVideoRenderer;
-                        if (renderer) {
+                        if (renderer && !isMembersOnlyVideo(renderer)) {
                             videos.push(extractVideoFromRenderer(renderer));
                         }
                     }
@@ -261,7 +261,7 @@ export function extractVideosFromBrowseResponse(data: any): BrowseVideosResult {
             renderer = item.playlistVideoRenderer;
         }
         
-        if (renderer) {
+        if (renderer && !isMembersOnlyVideo(renderer)) {
             videos.push(extractVideoFromRenderer(renderer));
         }
     }
@@ -289,7 +289,7 @@ export function extractVideosFromInitialData(data: any): Video[] {
                 item.gridVideoRenderer ||
                 item.videoRenderer;
             
-            if (renderer) {
+            if (renderer && !isMembersOnlyVideo(renderer)) {
                 videos.push(extractVideoFromRenderer(renderer));
             }
         }
