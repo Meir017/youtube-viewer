@@ -1138,22 +1138,16 @@ function renderVideoCard(video) {
         dateDisplay = `📅 ${escapeHtml(publishedTime)}`;
     }
     
-    // Description toggle (only if enriched)
-    const descriptionHtml = description ? `
-        <div class="video-description">
-            <button class="video-description-toggle" onclick="event.stopPropagation(); toggleDescription(this);">
-                <span class="toggle-icon">▶</span> Description
-            </button>
-            <div class="video-description-content">${escapeHtml(description)}</div>
-        </div>
-    ` : '';
+    // Enriched indicator (shows if video has description data)
+    const enrichedBadge = description ? '<span class="enriched-badge" title="Click for full description">📝</span>' : '';
     
     return `
-        <article class="video-card${description ? ' has-description' : ''}" onclick="openVideoModalById('${videoId}')" style="cursor: pointer;">
+        <article class="video-card${description ? ' is-enriched' : ''}" onclick="openVideoModalById('${videoId}')" style="cursor: pointer;">
             <div class="video-thumbnail">
                 ${showChannelIndicator ? `<span class="channel-indicator" style="--channel-color: ${channelColor};">${avatarUrl ? `<img src="${avatarUrl}" alt="" class="channel-indicator-icon">` : ''}${escapeHtml(channelTitle)}</span>` : ''}
                 <img src="${thumbnail}" alt="${escapeHtml(title)}" loading="lazy">
                 ${duration ? `<span class="video-duration">${escapeHtml(duration)}</span>` : ''}
+                ${enrichedBadge}
             </div>
             <div class="video-info">
                 <h3 class="video-title">${escapeHtml(title)}</h3>
@@ -1161,18 +1155,9 @@ function renderVideoCard(video) {
                     ${viewCount ? `<span>👁️ ${escapeHtml(viewCount)}</span>` : ''}
                     ${dateDisplay ? `<span>${dateDisplay}</span>` : ''}
                 </div>
-                ${descriptionHtml}
             </div>
         </article>
     `;
-}
-
-// Toggle description visibility
-function toggleDescription(button) {
-    const description = button.nextElementSibling;
-    const icon = button.querySelector('.toggle-icon');
-    const isExpanded = description.classList.toggle('expanded');
-    icon.textContent = isExpanded ? '▼' : '▶';
 }
 
 // Render a short card

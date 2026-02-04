@@ -690,6 +690,7 @@ body {
     overflow: hidden;
     transition: all 0.3s ease;
     border: 1px solid rgba(255,255,255,0.1);
+    position: relative;
 }
 
 .video-card:hover {
@@ -799,49 +800,24 @@ body {
     gap: 5px;
 }
 
-/* Video Description (Enriched) */
-.video-description {
-    margin-top: 10px;
-    border-top: 1px solid rgba(255,255,255,0.1);
-    padding-top: 10px;
-}
-
-.video-description-toggle {
-    background: none;
-    border: none;
-    color: rgba(255,255,255,0.7);
+/* Enriched Video Badge */
+.enriched-badge {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    background: rgba(0, 0, 0, 0.85);
+    padding: 4px 8px;
+    border-radius: 4px;
     font-size: 0.85rem;
-    cursor: pointer;
-    padding: 4px 0;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    transition: color 0.2s;
+    z-index: 2;
 }
 
-.video-description-toggle:hover {
-    color: #fff;
+.video-card.is-enriched {
+    border-color: rgba(78, 205, 196, 0.3);
 }
 
-.video-description-toggle .toggle-icon {
-    font-size: 0.7rem;
-    transition: transform 0.2s;
-}
-
-.video-description-content {
-    display: none;
-    margin-top: 8px;
-    font-size: 0.85rem;
-    color: rgba(255,255,255,0.7);
-    line-height: 1.5;
-    max-height: 200px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-word;
-}
-
-.video-description-content.expanded {
-    display: block;
+.video-card.is-enriched:hover {
+    border-color: rgba(78, 205, 196, 0.6);
 }
 
 /* Enrichment Panel */

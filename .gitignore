@@ -145,3 +145,6 @@ website/cache/
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Playwright MCP screenshots
+.playwright-mcp/
