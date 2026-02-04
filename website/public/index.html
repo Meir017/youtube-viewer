@@ -179,6 +179,26 @@
             <p>Data fetched from YouTube</p>
         </footer>
 
+        <!-- Video Player Modal -->
+        <div id="videoPlayerModal" class="video-modal" hidden>
+            <div class="video-modal-backdrop"></div>
+            <div class="video-modal-content">
+                <button class="video-modal-close" id="closeVideoModal" title="Close (Esc)">✕</button>
+                <div class="video-modal-player">
+                    <iframe id="videoPlayerIframe" src="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+                </div>
+                <div class="video-modal-info">
+                    <h3 id="videoModalTitle"></h3>
+                    <div class="video-modal-meta">
+                        <span id="videoModalChannel"></span>
+                        <span id="videoModalViews"></span>
+                        <span id="videoModalDate"></span>
+                    </div>
+                    <a id="videoModalLink" href="" target="_blank" rel="noopener noreferrer" class="video-modal-youtube-link">Open in YouTube ↗</a>
+                </div>
+            </div>
+        </div>
+
         <!-- Loading Overlay -->
         <div id="loadingOverlay" class="loading-overlay" hidden>
             <div class="loading-spinner"></div>

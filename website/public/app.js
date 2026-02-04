@@ -960,27 +960,27 @@ function renderVideoCard(video) {
     const { videoId, title, viewCount, publishedTime, duration, channelTitle, channelColor, channelHandle, channelAvatar } = video;
     // Use cached proxy for thumbnail to avoid YouTube throttling
     const thumbnail = `/img/${encodeURIComponent(channelHandle || 'unknown')}/${videoId}/mqdefault`;
-    const url = `https://www.youtube.com/watch?v=${videoId}`;
     const showChannelIndicator = channels.length > 1;
     // Use cached proxy for channel avatar
     const avatarUrl = channelAvatar ? `/avatar/${encodeURIComponent(channelHandle)}?url=${encodeURIComponent(channelAvatar)}` : '';
     
+    // Escape data for onclick attribute
+    const videoData = JSON.stringify({ videoId, title, viewCount, publishedTime, channelTitle }).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    
     return `
-        <article class="video-card">
-            <a href="${url}" target="_blank" rel="noopener noreferrer">
-                <div class="video-thumbnail">
-                    ${showChannelIndicator ? `<span class="channel-indicator" style="--channel-color: ${channelColor};">${avatarUrl ? `<img src="${avatarUrl}" alt="" class="channel-indicator-icon">` : ''}${escapeHtml(channelTitle)}</span>` : ''}
-                    <img src="${thumbnail}" alt="${escapeHtml(title)}" loading="lazy">
-                    ${duration ? `<span class="video-duration">${escapeHtml(duration)}</span>` : ''}
+        <article class="video-card" onclick='openVideoModal(${videoData})' style="cursor: pointer;">
+            <div class="video-thumbnail">
+                ${showChannelIndicator ? `<span class="channel-indicator" style="--channel-color: ${channelColor};">${avatarUrl ? `<img src="${avatarUrl}" alt="" class="channel-indicator-icon">` : ''}${escapeHtml(channelTitle)}</span>` : ''}
+                <img src="${thumbnail}" alt="${escapeHtml(title)}" loading="lazy">
+                ${duration ? `<span class="video-duration">${escapeHtml(duration)}</span>` : ''}
+            </div>
+            <div class="video-info">
+                <h3 class="video-title">${escapeHtml(title)}</h3>
+                <div class="video-meta">
+                    ${viewCount ? `<span>👁️ ${escapeHtml(viewCount)}</span>` : ''}
+                    ${publishedTime ? `<span>📅 ${escapeHtml(publishedTime)}</span>` : ''}
                 </div>
-                <div class="video-info">
-                    <h3 class="video-title">${escapeHtml(title)}</h3>
-                    <div class="video-meta">
-                        ${viewCount ? `<span>👁️ ${escapeHtml(viewCount)}</span>` : ''}
-                        ${publishedTime ? `<span>📅 ${escapeHtml(publishedTime)}</span>` : ''}
-                    </div>
-                </div>
-            </a>
+            </div>
         </article>
     `;
 }
@@ -990,26 +990,26 @@ function renderShortCard(short) {
     const { videoId, title, viewCount, channelTitle, channelColor, channelHandle, channelAvatar } = short;
     // Use cached proxy for thumbnail to avoid YouTube throttling
     const thumbnail = `/img/${encodeURIComponent(channelHandle || 'unknown')}/${videoId}/oar2`;
-    const url = `https://www.youtube.com/shorts/${videoId}`;
     const showChannelIndicator = channels.length > 1;
     // Use cached proxy for channel avatar
     const avatarUrl = channelAvatar ? `/avatar/${encodeURIComponent(channelHandle)}?url=${encodeURIComponent(channelAvatar)}` : '';
     
+    // Escape data for onclick attribute
+    const shortData = JSON.stringify({ videoId, title: title || 'Untitled Short', viewCount, channelTitle, isShort: true }).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    
     return `
-        <article class="short-card">
-            <a href="${url}" target="_blank" rel="noopener noreferrer">
-                <div class="short-thumbnail">
-                    <span class="short-badge">Short</span>
-                    ${showChannelIndicator ? `<span class="channel-indicator" style="--channel-color: ${channelColor}; top: 35px;">${avatarUrl ? `<img src="${avatarUrl}" alt="" class="channel-indicator-icon">` : ''}${escapeHtml(channelTitle)}</span>` : ''}
-                    <img src="${thumbnail}" alt="${escapeHtml(title)}" loading="lazy">
+        <article class="short-card" onclick='openVideoModal(${shortData})' style="cursor: pointer;">
+            <div class="short-thumbnail">
+                <span class="short-badge">Short</span>
+                ${showChannelIndicator ? `<span class="channel-indicator" style="--channel-color: ${channelColor}; top: 35px;">${avatarUrl ? `<img src="${avatarUrl}" alt="" class="channel-indicator-icon">` : ''}${escapeHtml(channelTitle)}</span>` : ''}
+                <img src="${thumbnail}" alt="${escapeHtml(title)}" loading="lazy">
+            </div>
+            <div class="short-info">
+                <h3 class="short-title">${escapeHtml(title || 'Untitled Short')}</h3>
+                <div class="short-meta">
+                    ${viewCount ? `<span>👁️ ${escapeHtml(viewCount)}</span>` : ''}
                 </div>
-                <div class="short-info">
-                    <h3 class="short-title">${escapeHtml(title || 'Untitled Short')}</h3>
-                    <div class="short-meta">
-                        ${viewCount ? `<span>👁️ ${escapeHtml(viewCount)}</span>` : ''}
-                    </div>
-                </div>
-            </a>
+            </div>
         </article>
     `;
 }
@@ -1045,3 +1045,59 @@ function showError(message) {
 function hideError() {
     errorMessage.hidden = true;
 }
+
+// Video Modal Functions
+const videoPlayerModal = document.getElementById('videoPlayerModal');
+const videoPlayerIframe = document.getElementById('videoPlayerIframe');
+const videoModalTitle = document.getElementById('videoModalTitle');
+const videoModalChannel = document.getElementById('videoModalChannel');
+const videoModalViews = document.getElementById('videoModalViews');
+const videoModalDate = document.getElementById('videoModalDate');
+const videoModalLink = document.getElementById('videoModalLink');
+const closeVideoModalBtn = document.getElementById('closeVideoModal');
+
+function openVideoModal(videoData) {
+    const { videoId, title, viewCount, publishedTime, channelTitle, isShort } = videoData;
+    
+    // Build YouTube embed URL
+    const embedUrl = isShort 
+        ? `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`
+        : `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0`;
+    
+    // Build YouTube watch/shorts URL
+    const youtubeUrl = isShort
+        ? `https://www.youtube.com/shorts/${videoId}`
+        : `https://www.youtube.com/watch?v=${videoId}`;
+    
+    // Set iframe source
+    videoPlayerIframe.src = embedUrl;
+    
+    // Set modal info
+    videoModalTitle.textContent = title || 'Untitled';
+    videoModalChannel.textContent = channelTitle ? `📺 ${channelTitle}` : '';
+    videoModalViews.textContent = viewCount ? `👁️ ${viewCount}` : '';
+    videoModalDate.textContent = publishedTime ? `📅 ${publishedTime}` : '';
+    videoModalLink.href = youtubeUrl;
+    
+    // Show modal
+    videoPlayerModal.hidden = false;
+    document.body.style.overflow = 'hidden';
+}
+
+function closeVideoModal() {
+    videoPlayerModal.hidden = true;
+    videoPlayerIframe.src = ''; // Stop video playback
+    document.body.style.overflow = '';
+}
+
+// Video modal event listeners
+closeVideoModalBtn.addEventListener('click', closeVideoModal);
+
+videoPlayerModal.querySelector('.video-modal-backdrop').addEventListener('click', closeVideoModal);
+
+// Close on Escape key
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !videoPlayerModal.hidden) {
+        closeVideoModal();
+    }
+});
