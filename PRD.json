@@ -339,7 +339,7 @@
       "title": "E2E Tests - Playwright Setup",
       "priority": "high",
       "type": "setup",
-      "completed": false,
+      "completed": true,
       "description": "Set up Playwright for end-to-end UI testing",
       "requirements": [
         "Create playwright.config.ts with proper settings",
