@@ -398,7 +398,7 @@
       "title": "E2E Tests - Channel Management",
       "priority": "high",
       "type": "testing",
-      "completed": false,
+      "completed": true,
       "description": "Write Playwright tests for channel management UI",
       "requirements": [
         "Test adding a channel by handle",
