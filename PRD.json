@@ -132,7 +132,7 @@
       "title": "Unit Tests - Collections API",
       "priority": "high",
       "type": "testing",
-      "completed": false,
+      "completed": true,
       "description": "Write unit tests for collections CRUD operations",
       "requirements": [
         "Test GET /api/collections returns all collections",
