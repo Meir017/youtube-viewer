@@ -223,7 +223,7 @@
       "title": "Unit Tests - Image Cache",
       "priority": "medium",
       "type": "testing",
-      "completed": false,
+      "completed": true,
       "description": "Write unit tests for image caching proxy functionality",
       "requirements": [
         "Test getCachedImage returns cached file when available",
