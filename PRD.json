@@ -74,7 +74,7 @@
       "title": "Refactor - Abstract External Dependencies",
       "priority": "high",
       "type": "refactoring",
-      "completed": false,
+      "completed": true,
       "description": "Create abstractions for external dependencies (YouTube API, file system) to enable mocking in tests",
       "requirements": [
         "Create website/interfaces/youtube-api.ts with interface for YouTube fetching",
@@ -657,51 +657,130 @@
     }
   ],
   "dependencies": {
-    "TASK-002": ["TASK-001"],
-    "TASK-003": ["TASK-001"],
-    "TASK-004": ["TASK-002", "TASK-003"],
-    "TASK-005": ["TASK-002", "TASK-003", "TASK-011"],
-    "TASK-006": ["TASK-002", "TASK-003", "TASK-011"],
-    "TASK-007": ["TASK-003", "TASK-011"],
-    "TASK-008": ["TASK-003", "TASK-011"],
-    "TASK-009": ["TASK-003", "TASK-011"],
-    "TASK-010": ["TASK-002", "TASK-003"],
-    "TASK-011": ["TASK-001"],
-    "TASK-012": ["TASK-001"],
-    "TASK-013": ["TASK-012"],
-    "TASK-014": ["TASK-012"],
-    "TASK-015": ["TASK-012"],
-    "TASK-016": ["TASK-012"],
-    "TASK-017": ["TASK-012"],
-    "TASK-018": ["TASK-012"],
-    "TASK-019": ["TASK-012"],
-    "TASK-020": ["TASK-002", "TASK-003"],
-    "TASK-021": ["TASK-001", "TASK-012"],
-    "TASK-022": ["TASK-001"]
+    "TASK-002": [
+      "TASK-001"
+    ],
+    "TASK-003": [
+      "TASK-001"
+    ],
+    "TASK-004": [
+      "TASK-002",
+      "TASK-003"
+    ],
+    "TASK-005": [
+      "TASK-002",
+      "TASK-003",
+      "TASK-011"
+    ],
+    "TASK-006": [
+      "TASK-002",
+      "TASK-003",
+      "TASK-011"
+    ],
+    "TASK-007": [
+      "TASK-003",
+      "TASK-011"
+    ],
+    "TASK-008": [
+      "TASK-003",
+      "TASK-011"
+    ],
+    "TASK-009": [
+      "TASK-003",
+      "TASK-011"
+    ],
+    "TASK-010": [
+      "TASK-002",
+      "TASK-003"
+    ],
+    "TASK-011": [
+      "TASK-001"
+    ],
+    "TASK-012": [
+      "TASK-001"
+    ],
+    "TASK-013": [
+      "TASK-012"
+    ],
+    "TASK-014": [
+      "TASK-012"
+    ],
+    "TASK-015": [
+      "TASK-012"
+    ],
+    "TASK-016": [
+      "TASK-012"
+    ],
+    "TASK-017": [
+      "TASK-012"
+    ],
+    "TASK-018": [
+      "TASK-012"
+    ],
+    "TASK-019": [
+      "TASK-012"
+    ],
+    "TASK-020": [
+      "TASK-002",
+      "TASK-003"
+    ],
+    "TASK-021": [
+      "TASK-001",
+      "TASK-012"
+    ],
+    "TASK-022": [
+      "TASK-001"
+    ]
   },
   "phases": [
     {
       "name": "Phase 1: Foundation",
       "description": "Set up testing infrastructure and refactor code for testability",
-      "tasks": ["TASK-001", "TASK-002", "TASK-003", "TASK-011", "TASK-012"],
+      "tasks": [
+        "TASK-001",
+        "TASK-002",
+        "TASK-003",
+        "TASK-011",
+        "TASK-012"
+      ],
       "estimatedDays": 5
     },
     {
       "name": "Phase 2: Unit Tests",
       "description": "Write comprehensive unit tests for all backend modules",
-      "tasks": ["TASK-004", "TASK-005", "TASK-006", "TASK-007", "TASK-008", "TASK-009", "TASK-010"],
+      "tasks": [
+        "TASK-004",
+        "TASK-005",
+        "TASK-006",
+        "TASK-007",
+        "TASK-008",
+        "TASK-009",
+        "TASK-010"
+      ],
       "estimatedDays": 7
     },
     {
       "name": "Phase 3: E2E Tests",
       "description": "Write Playwright tests for all UI functionality",
-      "tasks": ["TASK-013", "TASK-014", "TASK-015", "TASK-016", "TASK-017", "TASK-018", "TASK-019"],
+      "tasks": [
+        "TASK-013",
+        "TASK-014",
+        "TASK-015",
+        "TASK-016",
+        "TASK-017",
+        "TASK-018",
+        "TASK-019"
+      ],
       "estimatedDays": 6
     },
     {
       "name": "Phase 4: Integration & CI",
       "description": "Add integration tests and set up CI/CD",
-      "tasks": ["TASK-020", "TASK-021", "TASK-022"],
+      "tasks": [
+        "TASK-020",
+        "TASK-021",
+        "TASK-022"
+      ],
       "estimatedDays": 3
     }
   ],
