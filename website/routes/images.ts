@@ -1,5 +1,6 @@
 export interface CachedImageResult {
-    file?: Blob;
+    // BunFile for cached files (efficient streaming), Blob for fresh fetches
+    file: import('bun').BunFile | Blob | null;
     contentType: string;
     fromCache: boolean;
     error?: string;

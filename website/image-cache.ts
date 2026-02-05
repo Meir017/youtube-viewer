@@ -1,34 +1,52 @@
 // Image caching proxy for YouTube thumbnails
 import { join } from 'path';
-import { unlink } from 'fs/promises';
 import type { BunFile } from 'bun';
+import type { ImageFetcher, ImageCacheStorage } from './interfaces/image-fetcher';
+import { createImageFetcher, createImageCacheStorage } from './interfaces/image-fetcher';
 
 const CACHE_DIR = join(import.meta.dir, 'cache', 'images');
 
+/**
+ * Dependencies for image cache operations.
+ * Allows injection of mock implementations for testing.
+ */
+export interface ImageCacheDeps {
+    fetcher?: ImageFetcher;
+    storage?: ImageCacheStorage;
+    cacheDir?: string;
+}
+
+// Default implementations
+const defaultDeps: Required<ImageCacheDeps> = {
+    fetcher: createImageFetcher(),
+    storage: createImageCacheStorage(),
+    cacheDir: CACHE_DIR,
+};
+
 // Ensure cache directory exists
-async function ensureCacheDir(): Promise<void> {
-    const dir = Bun.file(join(CACHE_DIR, '.gitkeep'));
-    if (!(await dir.exists())) {
-        await Bun.write(join(CACHE_DIR, '.gitkeep'), '');
+async function ensureCacheDir(storage: ImageCacheStorage, cacheDir: string): Promise<void> {
+    const gitkeepPath = join(cacheDir, '.gitkeep');
+    if (!(await storage.exists(gitkeepPath))) {
+        await storage.write(gitkeepPath, new Blob(['']));
     }
 }
 
 // Sanitize channel handle for use in filename (remove @ and special chars)
-function sanitizeHandle(handle: string): string {
+export function sanitizeHandle(handle: string): string {
     return handle.replace(/^@/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
 // Get cache file path for a video thumbnail
-function getCachePath(channelHandle: string, videoId: string, type: string): string {
+function getCachePath(cacheDir: string, channelHandle: string, videoId: string, type: string): string {
     const sanitizedHandle = sanitizeHandle(channelHandle);
     const extension = type.includes('.') ? '' : '.jpg';
-    return join(CACHE_DIR, `${sanitizedHandle}_${videoId}_${type}${extension}`);
+    return join(cacheDir, `${sanitizedHandle}_${videoId}_${type}${extension}`);
 }
 
 // Get cache file path for a channel avatar
-function getAvatarCachePath(channelHandle: string): string {
+function getAvatarCachePath(cacheDir: string, channelHandle: string): string {
     const sanitizedHandle = sanitizeHandle(channelHandle);
-    return join(CACHE_DIR, `${sanitizedHandle}_avatar.jpg`);
+    return join(cacheDir, `${sanitizedHandle}_avatar.jpg`);
 }
 
 // YouTube thumbnail URL patterns
@@ -58,15 +76,18 @@ export interface CacheResult {
 export async function getCachedImage(
     channelHandle: string,
     videoId: string,
-    type: string
+    type: string,
+    deps: ImageCacheDeps = {}
 ): Promise<CacheResult> {
-    await ensureCacheDir();
+    const { fetcher = defaultDeps.fetcher, storage = defaultDeps.storage, cacheDir = defaultDeps.cacheDir } = deps;
     
-    const cachePath = getCachePath(channelHandle, videoId, type);
-    const cacheFile = Bun.file(cachePath);
+    await ensureCacheDir(storage, cacheDir);
     
-    // Try to serve from cache - return BunFile directly for efficient streaming
-    if (await cacheFile.exists()) {
+    const cachePath = getCachePath(cacheDir, channelHandle, videoId, type);
+    
+    // Try to serve from cache
+    if (await storage.exists(cachePath)) {
+        const cacheFile = await storage.read(cachePath);
         return {
             file: cacheFile,
             contentType: cacheFile.type || 'image/jpeg',
@@ -85,61 +106,45 @@ export async function getCachedImage(
         };
     }
     
-    try {
-        console.log(`Fetching image: ${youtubeUrl}`);
-        const response = await fetch(youtubeUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            },
-        });
-        
-        if (!response.ok) {
-            return {
-                file: null,
-                contentType: 'image/jpeg',
-                fromCache: false,
-                error: `YouTube returned ${response.status}`,
-            };
-        }
-        
-        const contentType = response.headers.get('content-type') || 'image/jpeg';
-        
-        // Get response as blob for both caching and returning
-        const blob = await response.blob();
-        
-        // Save to cache asynchronously (fire and forget for faster response)
-        Bun.write(cachePath, blob)
-            .then(() => console.log(`Cached: ${cachePath}`))
-            .catch((e) => console.error(`Cache write error for ${cachePath}:`, e));
-        
-        return {
-            file: blob,
-            contentType,
-            fromCache: false,
-        };
-    } catch (e: any) {
-        console.error(`Fetch error for ${youtubeUrl}:`, e);
+    console.log(`Fetching image: ${youtubeUrl}`);
+    const result = await fetcher.fetch(youtubeUrl);
+    
+    if (!result) {
         return {
             file: null,
             contentType: 'image/jpeg',
             fromCache: false,
-            error: e.message || 'Failed to fetch image',
+            error: 'Failed to fetch image from YouTube',
         };
     }
+    
+    // Save to cache asynchronously (fire and forget for faster response)
+    storage.write(cachePath, result.data)
+        .then(() => console.log(`Cached: ${cachePath}`))
+        .catch((e) => console.error(`Cache write error for ${cachePath}:`, e));
+    
+    return {
+        file: result.data instanceof Blob ? result.data : new Blob([result.data]),
+        contentType: result.contentType,
+        fromCache: false,
+    };
 }
 
 // Fetch and cache a channel avatar, or return from cache if available
 export async function getCachedAvatar(
     channelHandle: string,
-    avatarUrl: string
+    avatarUrl: string,
+    deps: ImageCacheDeps = {}
 ): Promise<CacheResult> {
-    await ensureCacheDir();
+    const { fetcher = defaultDeps.fetcher, storage = defaultDeps.storage, cacheDir = defaultDeps.cacheDir } = deps;
     
-    const cachePath = getAvatarCachePath(channelHandle);
-    const cacheFile = Bun.file(cachePath);
+    await ensureCacheDir(storage, cacheDir);
     
-    // Try to serve from cache - return BunFile directly for efficient streaming
-    if (await cacheFile.exists()) {
+    const cachePath = getAvatarCachePath(cacheDir, channelHandle);
+    
+    // Try to serve from cache
+    if (await storage.exists(cachePath)) {
+        const cacheFile = await storage.read(cachePath);
         return {
             file: cacheFile,
             contentType: cacheFile.type || 'image/jpeg',
@@ -157,58 +162,40 @@ export async function getCachedAvatar(
         };
     }
     
-    try {
-        console.log(`Fetching avatar: ${avatarUrl}`);
-        const response = await fetch(avatarUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            },
-        });
-        
-        if (!response.ok) {
-            return {
-                file: null,
-                contentType: 'image/jpeg',
-                fromCache: false,
-                error: `YouTube returned ${response.status}`,
-            };
-        }
-        
-        const contentType = response.headers.get('content-type') || 'image/jpeg';
-        
-        // Get response as blob for both caching and returning
-        const blob = await response.blob();
-        
-        // Save to cache asynchronously (fire and forget for faster response)
-        Bun.write(cachePath, blob)
-            .then(() => console.log(`Cached avatar: ${cachePath}`))
-            .catch((e) => console.error(`Avatar cache write error for ${cachePath}:`, e));
-        
-        return {
-            file: blob,
-            contentType,
-            fromCache: false,
-        };
-    } catch (e: any) {
-        console.error(`Avatar fetch error for ${avatarUrl}:`, e);
+    console.log(`Fetching avatar: ${avatarUrl}`);
+    const result = await fetcher.fetch(avatarUrl);
+    
+    if (!result) {
         return {
             file: null,
             contentType: 'image/jpeg',
             fromCache: false,
-            error: e.message || 'Failed to fetch avatar',
+            error: 'Failed to fetch avatar from YouTube',
         };
     }
+    
+    // Save to cache asynchronously (fire and forget for faster response)
+    storage.write(cachePath, result.data)
+        .then(() => console.log(`Cached avatar: ${cachePath}`))
+        .catch((e) => console.error(`Avatar cache write error for ${cachePath}:`, e));
+    
+    return {
+        file: result.data instanceof Blob ? result.data : new Blob([result.data]),
+        contentType: result.contentType,
+        fromCache: false,
+    };
 }
 
 // Clear cache
-export async function clearCache(): Promise<number> {
-    const glob = new Bun.Glob('*.jpg');
+export async function clearCache(deps: ImageCacheDeps = {}): Promise<number> {
+    const { storage = defaultDeps.storage, cacheDir = defaultDeps.cacheDir } = deps;
+    
     let count = 0;
     
-    for await (const file of glob.scan(CACHE_DIR)) {
-        const path = join(CACHE_DIR, file);
+    for await (const file of storage.list('*.jpg', cacheDir)) {
+        const path = join(cacheDir, file);
         try {
-            await unlink(path);
+            await storage.delete(path);
             count++;
         } catch (e) {
             // Ignore errors (file may have been deleted)
@@ -219,16 +206,17 @@ export async function clearCache(): Promise<number> {
 }
 
 // Get cache stats (optional utility)
-export async function getCacheStats(): Promise<{ fileCount: number; totalSize: number }> {
-    const glob = new Bun.Glob('*.jpg');
+export async function getCacheStats(deps: ImageCacheDeps = {}): Promise<{ fileCount: number; totalSize: number }> {
+    const { storage = defaultDeps.storage, cacheDir = defaultDeps.cacheDir } = deps;
+    
     let fileCount = 0;
     let totalSize = 0;
     
-    for await (const file of glob.scan(CACHE_DIR)) {
-        const path = join(CACHE_DIR, file);
+    for await (const file of storage.list('*.jpg', cacheDir)) {
+        const path = join(cacheDir, file);
         try {
-            const f = Bun.file(path);
-            if (await f.exists()) {
+            if (await storage.exists(path)) {
+                const f = await storage.read(path);
                 fileCount++;
                 totalSize += f.size;
             }

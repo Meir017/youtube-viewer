@@ -1,5 +1,5 @@
 // Channel processor for web - simplified version of the CLI generator
-import { fetchChannelPage, fetchBrowseData } from '../generator/api';
+import { fetchChannelPage as realFetchChannelPage, fetchBrowseData as realFetchBrowseData } from '../generator/api';
 import {
     extractYtInitialData,
     findVideosTabData,
@@ -9,19 +9,36 @@ import {
 } from '../generator/parsers';
 import { isVideoTooOld, isVideoTooShort, extractVideoFromRenderer } from '../generator/utils';
 import type { ChannelDetails, Video, VideosTabResult } from '../generator/types';
+import type { YouTubeApi } from './interfaces/youtube-api';
 
 // Shared config for web
 const browseApiUrl = 'https://www.youtube.com/youtubei/v1/browse?prettyPrint=false';
+
+/**
+ * Default YouTube API implementation using real fetch calls.
+ */
+const defaultYouTubeApi: Pick<YouTubeApi, 'fetchChannelPage' | 'fetchBrowseData'> = {
+    fetchChannelPage: realFetchChannelPage,
+    fetchBrowseData: realFetchBrowseData,
+};
 
 export interface WebChannelData {
     channel: ChannelDetails;
     videos: Video[];
 }
 
-interface WebConfig {
+export interface WebConfig {
     videoLimit: number;
     maxAgeDays: number;
     minLengthSeconds: number;
+}
+
+/**
+ * Dependencies for the channel processor.
+ * Allows injection of mock implementations for testing.
+ */
+export interface ChannelProcessorDeps {
+    youtubeApi?: Pick<YouTubeApi, 'fetchChannelPage' | 'fetchBrowseData'>;
 }
 
 const DEFAULT_CONFIG: WebConfig = {
@@ -57,8 +74,12 @@ function getChannelUrls(channelIdentifier: string) {
 
 export async function processChannelForWeb(
     channelInput: string,
-    config: Partial<WebConfig> = {}
+    config: Partial<WebConfig> = {},
+    deps: ChannelProcessorDeps = {}
 ): Promise<WebChannelData> {
+    const { youtubeApi = defaultYouTubeApi } = deps;
+    const { fetchChannelPage, fetchBrowseData } = youtubeApi;
+    
     const maxAgeDays = config.maxAgeDays ?? DEFAULT_CONFIG.maxAgeDays;
     const videoLimit = calculateVideoLimit(maxAgeDays, config.videoLimit);
     const cfg = { 
