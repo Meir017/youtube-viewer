@@ -162,7 +162,7 @@
       "title": "Unit Tests - Channels API",
       "priority": "high",
       "type": "testing",
-      "completed": false,
+      "completed": true,
       "description": "Write unit tests for channel operations within collections",
       "requirements": [
         "Test GET /api/collections/:id/channels returns channels for collection",
