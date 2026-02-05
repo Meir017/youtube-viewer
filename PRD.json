@@ -103,7 +103,7 @@
       "title": "Unit Tests - Store Operations",
       "priority": "high",
       "type": "testing",
-      "completed": false,
+      "completed": true,
       "description": "Write unit tests for data store operations (load, save, migrate)",
       "requirements": [
         "Test loadStore() returns empty store when file doesn't exist",
