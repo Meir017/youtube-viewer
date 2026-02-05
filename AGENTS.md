@@ -56,7 +56,43 @@ bun run generator/index.ts --channel=@GitHub --html --output=output.html
 
 ## Testing
 
-This project does not currently have automated tests. When adding new features, manually verify:
+This project has comprehensive automated tests. See [TESTING.md](./TESTING.md) for the full guide.
+
+### Quick Test Commands
+
+```bash
+# Run all unit tests
+bun test tests/unit/
+
+# Run all integration tests
+bun test tests/integration/
+
+# Run all tests
+bun test
+
+# Run E2E tests (requires Playwright)
+bunx playwright install  # One-time setup
+bunx playwright test
+
+# Run tests in watch mode
+bun test --watch
+
+# Run specific test file
+bun test tests/unit/store.test.ts
+```
+
+### Test Structure
+
+- `tests/unit/` - Unit tests for individual modules
+- `tests/integration/` - Integration tests for API flows
+- `tests/e2e/` - End-to-end browser tests (Playwright)
+- `tests/fixtures/` - Test data fixtures
+- `tests/mocks/` - Mock implementations
+- `tests/utils/` - Test utilities
+
+### Manual Verification
+
+After making changes, also manually verify:
 
 1. CLI tool generates correct HTML output
 2. Web server starts and serves channels correctly

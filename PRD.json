@@ -631,7 +631,7 @@
       "title": "Documentation - Testing Guide",
       "priority": "low",
       "type": "documentation",
-      "completed": false,
+      "completed": true,
       "description": "Document testing practices and how to run tests",
       "requirements": [
         "Add TESTING.md with testing overview",
