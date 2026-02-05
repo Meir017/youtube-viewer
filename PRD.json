@@ -573,7 +573,7 @@
       "title": "Integration Tests - Full API Flow",
       "priority": "medium",
       "type": "testing",
-      "completed": false,
+      "completed": true,
       "description": "Write integration tests that test full API flows with real server",
       "requirements": [
         "Test creating collection -> adding channel -> viewing videos flow",
