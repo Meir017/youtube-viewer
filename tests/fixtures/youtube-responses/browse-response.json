@@ -1,0 +1,52 @@
+{
+  "$comment": "YouTube browse API response for video pagination",
+  "onResponseReceivedActions": [
+    {
+      "appendContinuationItemsAction": {
+        "continuationItems": [
+          {
+            "richItemRenderer": {
+              "content": {
+                "videoRenderer": {
+                  "videoId": "video004",
+                  "title": { "runs": [{ "text": "GitHub Security Features Deep Dive" }] },
+                  "lengthText": { "simpleText": "25:10" },
+                  "publishedTimeText": { "simpleText": "3 weeks ago" },
+                  "viewCountText": { "simpleText": "30K views" },
+                  "thumbnail": {
+                    "thumbnails": [{ "url": "https://i.ytimg.com/vi/video004/mqdefault.jpg" }]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "richItemRenderer": {
+              "content": {
+                "videoRenderer": {
+                  "videoId": "video005",
+                  "title": { "runs": [{ "text": "Building Your First GitHub App" }] },
+                  "lengthText": { "simpleText": "18:45" },
+                  "publishedTimeText": { "simpleText": "1 month ago" },
+                  "viewCountText": { "simpleText": "45K views" },
+                  "thumbnail": {
+                    "thumbnails": [{ "url": "https://i.ytimg.com/vi/video005/mqdefault.jpg" }]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "continuationItemRenderer": {
+              "continuationEndpoint": {
+                "continuationCommand": {
+                  "token": "NEXT_PAGE_TOKEN_123"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

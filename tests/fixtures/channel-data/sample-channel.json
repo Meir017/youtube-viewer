@@ -1,0 +1,73 @@
+{
+  "$comment": "Sample channel data with various video types for testing",
+  "channel": {
+    "title": "TechCorp",
+    "description": "Technology reviews, tutorials, and news",
+    "vanityUrl": "@TechCorp",
+    "channelUrl": "https://youtube.com/@TechCorp",
+    "externalId": "UCTechCorpChannel123",
+    "avatar": "https://yt3.googleusercontent.com/techcorp-avatar.jpg",
+    "subscriberCount": "1.5M subscribers",
+    "videoCount": "250 videos"
+  },
+  "videos": [
+    {
+      "videoId": "tech001",
+      "title": "Best Laptops 2024",
+      "thumbnail": "https://i.ytimg.com/vi/tech001/mqdefault.jpg",
+      "duration": "15:30",
+      "views": "500K views",
+      "uploadedAt": "3 days ago",
+      "isShort": false,
+      "publishDate": "2024-12-01",
+      "description": "Complete guide to the best laptops of 2024."
+    },
+    {
+      "videoId": "tech002",
+      "title": "Quick Tech Tip",
+      "thumbnail": "https://i.ytimg.com/vi/tech002/oar2.jpg",
+      "duration": "0:45",
+      "views": "100K views",
+      "uploadedAt": "5 days ago",
+      "isShort": true
+    },
+    {
+      "videoId": "tech003",
+      "title": "Programming Tutorial Part 1",
+      "thumbnail": "https://i.ytimg.com/vi/tech003/mqdefault.jpg",
+      "duration": "1:02:15",
+      "views": "75K views",
+      "uploadedAt": "1 week ago",
+      "isShort": false
+    },
+    {
+      "videoId": "tech004",
+      "title": "Breaking News in Tech",
+      "thumbnail": "https://i.ytimg.com/vi/tech004/mqdefault.jpg",
+      "duration": "8:20",
+      "views": "200K views",
+      "uploadedAt": "2 weeks ago",
+      "isShort": false,
+      "publishDate": "2024-11-20",
+      "description": "Latest developments in the tech industry."
+    },
+    {
+      "videoId": "tech005",
+      "title": "Another Quick Tip",
+      "thumbnail": "https://i.ytimg.com/vi/tech005/oar2.jpg",
+      "duration": "0:30",
+      "views": "80K views",
+      "uploadedAt": "3 weeks ago",
+      "isShort": true
+    },
+    {
+      "videoId": "tech006",
+      "title": "Old Classic Video",
+      "thumbnail": "https://i.ytimg.com/vi/tech006/mqdefault.jpg",
+      "duration": "20:00",
+      "views": "2M views",
+      "uploadedAt": "2 months ago",
+      "isShort": false
+    }
+  ]
+}

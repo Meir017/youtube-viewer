@@ -1,0 +1,29 @@
+{
+  "$comment": "YouTube video details response from watch page",
+  "videoDetails": {
+    "videoId": "video001",
+    "title": "GitHub Universe 2024 Keynote",
+    "lengthSeconds": "2732",
+    "channelId": "UC7c3Kb6jYCRj4JOHHZTxKsQ",
+    "shortDescription": "Join us for the GitHub Universe 2024 keynote presentation. Learn about the latest features...",
+    "thumbnail": {
+      "thumbnails": [
+        { "url": "https://i.ytimg.com/vi/video001/maxresdefault.jpg", "width": 1280, "height": 720 }
+      ]
+    },
+    "viewCount": "125000",
+    "author": "GitHub"
+  },
+  "microformat": {
+    "playerMicroformatRenderer": {
+      "title": { "simpleText": "GitHub Universe 2024 Keynote" },
+      "description": { "simpleText": "Join us for the GitHub Universe 2024 keynote presentation. Learn about the latest features and announcements from GitHub." },
+      "lengthSeconds": "2732",
+      "ownerProfileUrl": "http://www.youtube.com/@GitHub",
+      "externalChannelId": "UC7c3Kb6jYCRj4JOHHZTxKsQ",
+      "publishDate": "2024-11-15",
+      "uploadDate": "2024-11-15",
+      "category": "Science & Technology"
+    }
+  }
+}

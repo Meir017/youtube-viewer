@@ -1,0 +1,112 @@
+{
+  "$comment": "Sample store with multiple collections and channels",
+  "collections": [
+    {
+      "id": "coll-tech-001",
+      "name": "Tech Channels",
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "channels": [
+        {
+          "id": "ch-github-001",
+          "handle": "@GitHub",
+          "addedAt": "2024-01-01T10:00:00.000Z",
+          "lastUpdated": "2024-12-01T15:30:00.000Z",
+          "data": {
+            "channel": {
+              "title": "GitHub",
+              "description": "GitHub is where developers shape the future",
+              "vanityUrl": "@GitHub",
+              "externalId": "UC7c3Kb6jYCRj4JOHHZTxKsQ",
+              "avatar": "https://yt3.googleusercontent.com/github-avatar.jpg",
+              "subscriberCount": "400K subscribers"
+            },
+            "videos": [
+              {
+                "videoId": "gh001",
+                "title": "GitHub Actions Tutorial",
+                "thumbnail": "https://i.ytimg.com/vi/gh001/mqdefault.jpg",
+                "duration": "12:00",
+                "views": "50K views",
+                "uploadedAt": "1 day ago",
+                "isShort": false
+              },
+              {
+                "videoId": "gh002",
+                "title": "GitHub Copilot Tips",
+                "thumbnail": "https://i.ytimg.com/vi/gh002/mqdefault.jpg",
+                "duration": "8:30",
+                "views": "100K views",
+                "uploadedAt": "1 week ago",
+                "isShort": false,
+                "publishDate": "2024-11-25",
+                "description": "Learn how to use GitHub Copilot effectively."
+              }
+            ]
+          }
+        },
+        {
+          "id": "ch-ts-001",
+          "handle": "@TypeScript",
+          "addedAt": "2024-01-02T10:00:00.000Z",
+          "lastUpdated": "2024-12-01T15:30:00.000Z",
+          "data": {
+            "channel": {
+              "title": "TypeScript",
+              "description": "Official TypeScript channel",
+              "vanityUrl": "@TypeScript",
+              "externalId": "UCTypeScript123",
+              "avatar": "https://yt3.googleusercontent.com/ts-avatar.jpg",
+              "subscriberCount": "50K subscribers"
+            },
+            "videos": [
+              {
+                "videoId": "ts001",
+                "title": "TypeScript 5.0 Features",
+                "thumbnail": "https://i.ytimg.com/vi/ts001/mqdefault.jpg",
+                "duration": "20:00",
+                "views": "30K views",
+                "uploadedAt": "3 days ago",
+                "isShort": false
+              }
+            ]
+          }
+        }
+      ],
+      "hiddenVideos": ["gh001"]
+    },
+    {
+      "id": "coll-movies-001",
+      "name": "Movie Trailers",
+      "createdAt": "2024-02-01T00:00:00.000Z",
+      "channels": [
+        {
+          "id": "ch-marvel-001",
+          "handle": "@Marvel",
+          "addedAt": "2024-02-01T10:00:00.000Z",
+          "lastUpdated": "2024-12-01T15:30:00.000Z",
+          "data": {
+            "channel": {
+              "title": "Marvel Entertainment",
+              "description": "The official Marvel channel",
+              "vanityUrl": "@Marvel",
+              "externalId": "UCMarvel456",
+              "avatar": "https://yt3.googleusercontent.com/marvel-avatar.jpg",
+              "subscriberCount": "20M subscribers"
+            },
+            "videos": [
+              {
+                "videoId": "mv001",
+                "title": "Upcoming Movie Trailer",
+                "thumbnail": "https://i.ytimg.com/vi/mv001/mqdefault.jpg",
+                "duration": "2:30",
+                "views": "5M views",
+                "uploadedAt": "2 days ago",
+                "isShort": false
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

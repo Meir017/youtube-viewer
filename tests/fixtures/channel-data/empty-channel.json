@@ -1,0 +1,14 @@
+{
+  "$comment": "Empty channel with no videos - edge case testing",
+  "channel": {
+    "title": "New Channel",
+    "description": "A brand new channel with no videos yet",
+    "vanityUrl": "@NewChannel",
+    "channelUrl": "https://youtube.com/@NewChannel",
+    "externalId": "UCNewChannel789",
+    "avatar": "https://yt3.googleusercontent.com/new-channel-avatar.jpg",
+    "subscriberCount": "100 subscribers",
+    "videoCount": "0 videos"
+  },
+  "videos": []
+}

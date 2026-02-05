@@ -1,0 +1,93 @@
+{
+  "$comment": "YouTube channel page ytInitialData for a tech channel",
+  "metadata": {
+    "channelMetadataRenderer": {
+      "title": "GitHub",
+      "description": "GitHub is where over 100 million developers shape the future of software, together.",
+      "vanityChannelUrl": "https://www.youtube.com/@GitHub",
+      "externalId": "UC7c3Kb6jYCRj4JOHHZTxKsQ",
+      "avatar": {
+        "thumbnails": [
+          { "url": "https://yt3.googleusercontent.com/ytc/AIdro_kV9qE5GKmCIWCsGdQ7wJQ0kXbV7a8V5p2W2Ztf=s176-c-k-c0x00ffffff-no-rj" }
+        ]
+      }
+    }
+  },
+  "header": {
+    "c4TabbedHeaderRenderer": {
+      "channelId": "UC7c3Kb6jYCRj4JOHHZTxKsQ",
+      "title": "GitHub",
+      "subscriberCountText": { "simpleText": "400K subscribers" },
+      "banner": {
+        "thumbnails": [
+          { "url": "https://yt3.googleusercontent.com/banner/GitHub.jpg" }
+        ]
+      }
+    }
+  },
+  "contents": {
+    "twoColumnBrowseResultsRenderer": {
+      "tabs": [
+        {
+          "tabRenderer": {
+            "title": "Videos",
+            "content": {
+              "richGridRenderer": {
+                "contents": [
+                  {
+                    "richItemRenderer": {
+                      "content": {
+                        "videoRenderer": {
+                          "videoId": "video001",
+                          "title": { "runs": [{ "text": "GitHub Universe 2024 Keynote" }] },
+                          "lengthText": { "simpleText": "45:32" },
+                          "publishedTimeText": { "simpleText": "2 days ago" },
+                          "viewCountText": { "simpleText": "125K views" },
+                          "thumbnail": {
+                            "thumbnails": [{ "url": "https://i.ytimg.com/vi/video001/mqdefault.jpg" }]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "richItemRenderer": {
+                      "content": {
+                        "videoRenderer": {
+                          "videoId": "video002",
+                          "title": { "runs": [{ "text": "Getting Started with GitHub Actions" }] },
+                          "lengthText": { "simpleText": "12:45" },
+                          "publishedTimeText": { "simpleText": "1 week ago" },
+                          "viewCountText": { "simpleText": "50K views" },
+                          "thumbnail": {
+                            "thumbnails": [{ "url": "https://i.ytimg.com/vi/video002/mqdefault.jpg" }]
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "richItemRenderer": {
+                      "content": {
+                        "videoRenderer": {
+                          "videoId": "video003",
+                          "title": { "runs": [{ "text": "Introduction to GitHub Copilot" }] },
+                          "lengthText": { "simpleText": "8:30" },
+                          "publishedTimeText": { "simpleText": "2 weeks ago" },
+                          "viewCountText": { "simpleText": "200K views" },
+                          "thumbnail": {
+                            "thumbnails": [{ "url": "https://i.ytimg.com/vi/video003/mqdefault.jpg" }]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
