@@ -284,7 +284,7 @@
       "title": "Unit Tests - Hidden Videos API",
       "priority": "medium",
       "type": "testing",
-      "completed": false,
+      "completed": true,
       "description": "Write unit tests for hidden videos functionality",
       "requirements": [
         "Test GET /api/collections/:id/hidden returns hidden video IDs",
