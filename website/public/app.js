@@ -33,6 +33,10 @@ let currentMaxAge = 30;
 let minDurationMinutes = 0;
 let maxDurationMinutes = Infinity;
 
+// Hidden videos state
+let hiddenVideoIds = new Set();
+let showHiddenVideos = false; // Toggle between regular and hidden videos view
+
 // Enrichment state
 let enrichmentStatus = null;
 let enrichmentPollInterval = null;
@@ -527,6 +531,92 @@ function stopEnrichmentPolling() {
     }
 }
 
+// ==================== HIDDEN VIDEOS FUNCTIONS ====================
+
+// Load hidden videos for current collection
+async function loadHiddenVideos() {
+    if (!activeCollectionId) {
+        hiddenVideoIds = new Set();
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/collections/${activeCollectionId}/hidden`);
+        if (!response.ok) throw new Error('Failed to load hidden videos');
+        const hiddenIds = await response.json();
+        hiddenVideoIds = new Set(hiddenIds);
+    } catch (error) {
+        console.error('Error loading hidden videos:', error);
+        hiddenVideoIds = new Set();
+    }
+}
+
+// Hide a video
+async function hideVideo(videoId, event) {
+    if (event) {
+        event.stopPropagation();
+    }
+    
+    if (!activeCollectionId) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/collections/${activeCollectionId}/hidden/${videoId}`, {
+            method: 'POST',
+        });
+        
+        if (!response.ok) throw new Error('Failed to hide video');
+        
+        const data = await response.json();
+        hiddenVideoIds = new Set(data.hiddenVideos);
+        
+        // Re-render videos to update the view
+        renderVideos();
+        renderSummaryStats();
+    } catch (error) {
+        showError('Failed to hide video');
+        console.error('Hide video error:', error);
+    }
+}
+
+// Unhide a video
+async function unhideVideo(videoId, event) {
+    if (event) {
+        event.stopPropagation();
+    }
+    
+    if (!activeCollectionId) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/collections/${activeCollectionId}/hidden/${videoId}`, {
+            method: 'DELETE',
+        });
+        
+        if (!response.ok) throw new Error('Failed to unhide video');
+        
+        const data = await response.json();
+        hiddenVideoIds = new Set(data.hiddenVideos);
+        
+        // Re-render videos to update the view
+        renderVideos();
+        renderSummaryStats();
+    } catch (error) {
+        showError('Failed to unhide video');
+        console.error('Unhide video error:', error);
+    }
+}
+
+// Toggle between regular and hidden videos view
+function toggleHiddenVideosView(showHidden) {
+    showHiddenVideos = showHidden;
+    
+    // Update tab styles
+    document.querySelectorAll('.view-toggle-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.view === (showHidden ? 'hidden' : 'videos'));
+    });
+    
+    renderVideos();
+}
+
 // Render the enrichment panel
 function renderEnrichmentPanel() {
     const panel = document.getElementById('enrichmentPanel');
@@ -605,7 +695,11 @@ function filterVideos(videos) {
         const matchesMinDuration = durationSec >= minDurationSec;
         const matchesMaxDuration = maxDurationSec === Infinity || durationSec <= maxDurationSec;
         
-        return matchesChannel && matchesSearch && matchesMinDuration && matchesMaxDuration && !video.isShort;
+        // Hidden videos filter
+        const isHidden = hiddenVideoIds.has(video.videoId);
+        const matchesHiddenFilter = showHiddenVideos ? isHidden : !isHidden;
+        
+        return matchesChannel && matchesSearch && matchesMinDuration && matchesMaxDuration && !video.isShort && matchesHiddenFilter;
     });
 }
 
@@ -649,6 +743,9 @@ async function loadCollectionChannels(collectionId) {
         channels = await response.json();
         processChannelData();
         
+        // Load hidden videos for this collection
+        await loadHiddenVideos();
+        
         // Fetch enrichment status
         enrichmentStatus = await fetchEnrichmentStatus();
         
@@ -663,6 +760,7 @@ async function loadCollectionChannels(collectionId) {
         allVideos = [];
         allShorts = [];
         enrichmentStatus = null;
+        hiddenVideoIds = new Set();
     } finally {
         showLoading(false);
     }
@@ -832,6 +930,10 @@ async function selectCollection(id) {
     stopEnrichmentPolling();
     enrichmentStatus = null;
     
+    // Reset hidden videos state
+    hiddenVideoIds = new Set();
+    showHiddenVideos = false;
+    
     activeCollectionId = id;
     activeChannel = 'all';
     await loadCollectionChannels(id);
@@ -997,8 +1099,23 @@ function updateUIVisibility() {
 function renderSummaryStats() {
     totalCollectionsEl.textContent = collections.length;
     totalChannelsEl.textContent = channels.length;
-    totalVideosEl.textContent = allVideos.length;
+    
+    // Count non-hidden videos
+    const visibleVideos = allVideos.filter(v => !hiddenVideoIds.has(v.videoId)).length;
+    totalVideosEl.textContent = visibleVideos;
     totalShortsEl.textContent = allShorts.length;
+    
+    // Update hidden videos count in stats if element exists
+    const hiddenStatsContainer = document.getElementById('hiddenStatContainer');
+    const totalHiddenEl = document.getElementById('totalHidden');
+    if (hiddenStatsContainer && totalHiddenEl) {
+        if (hiddenVideoIds.size > 0) {
+            hiddenStatsContainer.hidden = false;
+            totalHiddenEl.textContent = hiddenVideoIds.size;
+        } else {
+            hiddenStatsContainer.hidden = true;
+        }
+    }
     
     if (allShorts.length > 0) {
         shortsStatContainer.hidden = false;
@@ -1052,6 +1169,20 @@ function renderVideos() {
     
     videoCountEl.textContent = sorted.length;
     
+    // Update section title based on view
+    const sectionTitle = document.querySelector('#videosSection .section-title');
+    if (sectionTitle) {
+        const emoji = showHiddenVideos ? '👁️‍🗨️' : '🎬';
+        const text = showHiddenVideos ? 'Hidden Videos' : 'Videos';
+        sectionTitle.innerHTML = `
+            ${emoji} ${text}
+            <span class="section-count">${sorted.length}</span>
+        `;
+    }
+    
+    // Render view toggle tabs
+    renderViewToggleTabs();
+    
     if (sorted.length === 0) {
         // Destroy existing virtual scroll
         if (videosVirtualScroll) {
@@ -1064,6 +1195,13 @@ function renderVideos() {
                 <div class="empty-state">
                     <h3>No channels added yet</h3>
                     <p>Add a YouTube channel handle above to get started!</p>
+                </div>
+            `;
+        } else if (showHiddenVideos) {
+            videosGrid.innerHTML = `
+                <div class="empty-state">
+                    <h3>No hidden videos</h3>
+                    <p>Videos you hide will appear here.</p>
                 </div>
             `;
         } else {
@@ -1086,6 +1224,40 @@ function renderVideos() {
         );
     }
     videosVirtualScroll.setItems(sorted);
+}
+
+// Render view toggle tabs (Videos / Hidden)
+function renderViewToggleTabs() {
+    let viewToggle = document.getElementById('viewToggleTabs');
+    
+    // Create if doesn't exist
+    if (!viewToggle) {
+        viewToggle = document.createElement('div');
+        viewToggle.id = 'viewToggleTabs';
+        viewToggle.className = 'view-toggle-tabs';
+        
+        // Insert before the controls
+        const controls = document.querySelector('#videosSection .controls');
+        if (controls) {
+            controls.parentNode.insertBefore(viewToggle, controls);
+        }
+    }
+    
+    // Only show if there are hidden videos
+    if (hiddenVideoIds.size === 0 && !showHiddenVideos) {
+        viewToggle.hidden = true;
+        return;
+    }
+    
+    viewToggle.hidden = false;
+    viewToggle.innerHTML = `
+        <button class="view-toggle-tab ${!showHiddenVideos ? 'active' : ''}" data-view="videos" onclick="toggleHiddenVideosView(false)">
+            🎬 Videos
+        </button>
+        <button class="view-toggle-tab ${showHiddenVideos ? 'active' : ''}" data-view="hidden" onclick="toggleHiddenVideosView(true)">
+            👁️‍🗨️ Hidden <span class="hidden-count">${hiddenVideoIds.size}</span>
+        </button>
+    `;
 }
 
 // Render shorts grid
@@ -1141,6 +1313,12 @@ function renderVideoCard(video) {
     // Enriched indicator (shows if video has description data)
     const enrichedBadge = description ? '<span class="enriched-badge" title="Click for full description">📝</span>' : '';
     
+    // Hide/Unhide button based on current view
+    const isHidden = hiddenVideoIds.has(videoId);
+    const hideButton = showHiddenVideos 
+        ? `<button class="hide-video-btn unhide" onclick="unhideVideo('${videoId}', event)" title="Unhide video">👁️</button>`
+        : `<button class="hide-video-btn" onclick="hideVideo('${videoId}', event)" title="Hide video">🙈</button>`;
+    
     return `
         <article class="video-card${description ? ' is-enriched' : ''}" onclick="openVideoModalById('${videoId}')" style="cursor: pointer;">
             <div class="video-thumbnail">
@@ -1148,6 +1326,7 @@ function renderVideoCard(video) {
                 <img src="${thumbnail}" alt="${escapeHtml(title)}" loading="lazy">
                 ${duration ? `<span class="video-duration">${escapeHtml(duration)}</span>` : ''}
                 ${enrichedBadge}
+                ${hideButton}
             </div>
             <div class="video-info">
                 <h3 class="video-title">${escapeHtml(title)}</h3>

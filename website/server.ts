@@ -383,6 +383,72 @@ const server = Bun.serve({
                 return Response.json(result, { headers: corsHeaders });
             }
 
+            // ==================== HIDDEN VIDEOS API ====================
+
+            // GET /api/collections/:collectionId/hidden - Get list of hidden video IDs
+            const getHiddenMatch = path.match(/^\/api\/collections\/([^/]+)\/hidden$/);
+            if (getHiddenMatch && req.method === 'GET') {
+                const collectionId = getHiddenMatch[1];
+                const store = await loadStore();
+                const collection = store.collections.find(c => c.id === collectionId);
+                
+                if (!collection) {
+                    return Response.json({ error: 'Collection not found' }, { status: 404, headers: corsHeaders });
+                }
+
+                return Response.json(collection.hiddenVideos || [], { headers: corsHeaders });
+            }
+
+            // POST /api/collections/:collectionId/hidden/:videoId - Hide a video
+            const hideVideoMatch = path.match(/^\/api\/collections\/([^/]+)\/hidden\/([^/]+)$/);
+            if (hideVideoMatch && req.method === 'POST') {
+                const collectionId = hideVideoMatch[1];
+                const videoId = hideVideoMatch[2];
+                const store = await loadStore();
+                const collection = store.collections.find(c => c.id === collectionId);
+                
+                if (!collection) {
+                    return Response.json({ error: 'Collection not found' }, { status: 404, headers: corsHeaders });
+                }
+
+                // Initialize hiddenVideos array if needed
+                if (!collection.hiddenVideos) {
+                    collection.hiddenVideos = [];
+                }
+
+                // Add video to hidden list if not already there
+                if (!collection.hiddenVideos.includes(videoId)) {
+                    collection.hiddenVideos.push(videoId);
+                    await saveStore(store);
+                }
+
+                return Response.json({ success: true, hiddenVideos: collection.hiddenVideos }, { headers: corsHeaders });
+            }
+
+            // DELETE /api/collections/:collectionId/hidden/:videoId - Unhide a video
+            const unhideVideoMatch = path.match(/^\/api\/collections\/([^/]+)\/hidden\/([^/]+)$/);
+            if (unhideVideoMatch && req.method === 'DELETE') {
+                const collectionId = unhideVideoMatch[1];
+                const videoId = unhideVideoMatch[2];
+                const store = await loadStore();
+                const collection = store.collections.find(c => c.id === collectionId);
+                
+                if (!collection) {
+                    return Response.json({ error: 'Collection not found' }, { status: 404, headers: corsHeaders });
+                }
+
+                // Remove video from hidden list
+                if (collection.hiddenVideos) {
+                    const index = collection.hiddenVideos.indexOf(videoId);
+                    if (index !== -1) {
+                        collection.hiddenVideos.splice(index, 1);
+                        await saveStore(store);
+                    }
+                }
+
+                return Response.json({ success: true, hiddenVideos: collection.hiddenVideos || [] }, { headers: corsHeaders });
+            }
+
             return Response.json({ error: 'Not found' }, { status: 404, headers: corsHeaders });
         }
 

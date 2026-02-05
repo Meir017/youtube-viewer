@@ -44,6 +44,7 @@ export interface Collection {
     name: string;
     channels: StoredChannel[];
     createdAt: string;
+    hiddenVideos?: string[]; // Array of video IDs that are hidden
 }
 
 // In-memory job tracking
