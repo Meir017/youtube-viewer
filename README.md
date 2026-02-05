@@ -1,5 +1,7 @@
 # YouTube Viewer
 
+[![Tests](https://github.com/meir017/youtube-viewer/actions/workflows/test.yml/badge.svg)](https://github.com/meir017/youtube-viewer/actions/workflows/test.yml)
+
 A Bun/TypeScript CLI tool for fetching and aggregating videos from multiple YouTube channels. Generate HTML pages to browse trending videos from your favorite channels.
 
 ## Features
