@@ -253,7 +253,7 @@
       "title": "Unit Tests - Video Enrichment",
       "priority": "medium",
       "type": "testing",
-      "completed": false,
+      "completed": true,
       "description": "Write unit tests for video enrichment job management",
       "requirements": [
         "Test startEnrichment creates new job",
