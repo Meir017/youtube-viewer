@@ -40,7 +40,7 @@
       "title": "Refactor Server - Extract Route Handlers",
       "priority": "critical",
       "type": "refactoring",
-      "completed": false,
+      "completed": true,
       "description": "Extract route handlers from server.ts into separate testable modules to enable unit testing without starting the full server",
       "requirements": [
         "Create website/routes/collections.ts for collection CRUD operations",
