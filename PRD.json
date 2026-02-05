@@ -428,7 +428,7 @@
       "title": "E2E Tests - Video Display and Filtering",
       "priority": "high",
       "type": "testing",
-      "completed": false,
+      "completed": true,
       "description": "Write Playwright tests for video grid display and filtering",
       "requirements": [
         "Test videos display in grid layout",
@@ -459,7 +459,7 @@
       "title": "E2E Tests - Video Modal",
       "priority": "medium",
       "type": "testing",
-      "completed": false,
+      "completed": true,
       "description": "Write Playwright tests for video player modal",
       "requirements": [
         "Test clicking video opens modal",
@@ -489,7 +489,7 @@
       "title": "E2E Tests - Hidden Videos",
       "priority": "medium",
       "type": "testing",
-      "completed": false,
+      "completed": true,
       "description": "Write Playwright tests for hidden videos functionality",
       "requirements": [
         "Test hide button appears on video cards",
@@ -517,7 +517,7 @@
       "title": "E2E Tests - Enrichment UI",
       "priority": "medium",
       "type": "testing",
-      "completed": false,
+      "completed": true,
       "description": "Write Playwright tests for video enrichment UI",
       "requirements": [
         "Test enrichment panel shows status",
@@ -546,7 +546,7 @@
       "title": "E2E Tests - Responsive Design",
       "priority": "low",
       "type": "testing",
-      "completed": false,
+      "completed": true,
       "description": "Write Playwright tests for responsive behavior",
       "requirements": [
         "Test mobile viewport shows correct layout",
