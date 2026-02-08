@@ -152,7 +152,7 @@
         "Run bun test tests/unit/build-static.test.ts and verify all tests pass",
         "Run bun test to verify no regressions"
       ],
-      "completed": false
+      "completed": true
     },
     {
       "id": "TASK-007",
