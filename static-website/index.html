@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Channel Viewer</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header with Stats -->
+        <header class="multi-channel-header">
+            <h1 class="multi-channel-title">📺 YouTube Channel Viewer</h1>
+            <div class="multi-channel-summary" id="summaryStats">
+                <div class="summary-stat">
+                    <div class="summary-stat-label">&#128193; Collections</div>
+                    <div class="summary-stat-value" id="totalCollections">0</div>
+                </div>
+                <div class="summary-stat">
+                    <div class="summary-stat-label">📺 Channels</div>
+                    <div class="summary-stat-value" id="totalChannels">0</div>
+                </div>
+                <div class="summary-stat">
+                    <div class="summary-stat-label">🎬 Videos</div>
+                    <div class="summary-stat-value" id="totalVideos">0</div>
+                </div>
+                <div class="summary-stat" id="shortsStatContainer" hidden>
+                    <div class="summary-stat-label">📱 Shorts</div>
+                    <div class="summary-stat-value" id="totalShorts">0</div>
+                </div>
+            </div>
+            
+            <!-- Collection Tabs (top level) -->
+            <div class="collection-tabs-container">
+                <div class="collection-tabs" id="collectionTabs">
+                    <!-- Collection tabs will be rendered here -->
+                </div>
+            </div>
+            
+            <!-- Catalog Filters -->
+            <div class="catalog-filters" id="catalogFilters" hidden>
+                <div class="filter-group">
+                    <label for="minDurationInput">⏱️ Min</label>
+                    <input type="number" id="minDurationInput" min="0" placeholder="0" value="0">
+                    <span class="filter-unit">min</span>
+                </div>
+                <div class="filter-group">
+                    <label for="maxDurationInput">Max</label>
+                    <input type="number" id="maxDurationInput" min="0" placeholder="∞">
+                    <span class="filter-unit">min</span>
+                </div>
+            </div>
+            
+            <!-- Channel Tabs (within selected collection) -->
+            <div class="channel-tabs-container" id="channelTabsContainer" hidden>
+                <div class="channel-tabs" id="channelTabs">
+                    <button class="channel-tab active" data-channel="all">
+                        <span class="channel-dot"></span>
+                        All Channels
+                    </button>
+                    <!-- Channel tabs will be rendered here -->
+                </div>
+            </div>
+        </header>
+
+        <!-- Videos Section -->
+        <section class="videos-section" id="videosSection">
+            <h2 class="section-title">
+                🎬 Videos
+                <span class="section-count" id="videoCount">0</span>
+            </h2>
+            
+            <div class="controls">
+                <input type="text" class="search-box" placeholder="🔍 Search videos..." id="searchBox">
+                <div class="sort-buttons">
+                    <button class="sort-btn active" data-sort="default" data-order="desc">
+                        <span>Default</span>
+                    </button>
+                    <button class="sort-btn" data-sort="views" data-order="desc">
+                        <span>👁️ Views</span>
+                        <span class="sort-icon">▼</span>
+                    </button>
+                    <button class="sort-btn" data-sort="date" data-order="desc">
+                        <span>📅 Date</span>
+                        <span class="sort-icon">▼</span>
+                    </button>
+                    <button class="sort-btn" data-sort="duration" data-order="desc">
+                        <span>⏱️ Duration</span>
+                        <span class="sort-icon">▼</span>
+                    </button>
+                    <button class="sort-btn" data-sort="title" data-order="asc">
+                        <span>🔤 Title</span>
+                        <span class="sort-icon">▲</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="videos-grid" id="videosGrid">
+                <!-- Videos will be rendered here -->
+            </div>
+        </section>
+
+        <!-- Shorts Section -->
+        <section class="shorts-section" id="shortsSection" hidden>
+            <h2 class="section-title">
+                📱 Shorts
+                <span class="section-count shorts" id="shortsCount">0</span>
+            </h2>
+            
+            <div class="controls">
+                <input type="text" class="search-box" placeholder="🔍 Search shorts..." id="searchBoxShorts">
+            </div>
+            
+            <div class="shorts-grid" id="shortsGrid">
+                <!-- Shorts will be rendered here -->
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer" id="footer">
+            <p>Data fetched from YouTube · Static snapshot</p>
+        </footer>
+
+        <!-- Video Player Modal -->
+        <div id="videoPlayerModal" class="video-modal" hidden>
+            <div class="video-modal-backdrop"></div>
+            <div class="video-modal-content">
+                <button class="video-modal-close" id="closeVideoModal" title="Close (Esc)">✕</button>
+                <div class="video-modal-player">
+                    <iframe id="videoPlayerIframe" src="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+                </div>
+                <div class="video-modal-info">
+                    <h3 id="videoModalTitle"></h3>
+                    <div class="video-modal-meta">
+                        <span id="videoModalChannel"></span>
+                        <span id="videoModalViews"></span>
+                        <span id="videoModalDate"></span>
+                    </div>
+                    <div id="videoModalDescription" class="video-modal-description" hidden></div>
+                    <a id="videoModalLink" href="" target="_blank" rel="noopener noreferrer" class="video-modal-youtube-link">Open in YouTube ↗</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay" class="loading-overlay" hidden>
+            <div class="loading-spinner"></div>
+            <p>Loading channels...</p>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
