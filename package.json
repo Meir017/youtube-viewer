@@ -8,6 +8,7 @@
     "start": "bun run generator/index.ts",
     "web": "bun run website/server.ts",
     "dev-web": "bun --watch run website/server.ts",
+    "tools:refresh": "bun run website-tools/refresh.ts",
     "tools:enrich": "bun run website-tools/enrich.ts",
     "test": "bun test tests/unit tests/integration",
     "test:unit": "bun test tests/unit",
