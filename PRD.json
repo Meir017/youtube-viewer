@@ -131,7 +131,7 @@
         "Serve output directory with any static server and verify full functionality",
         "Run bun run tools:build-static --help and verify help text"
       ],
-      "completed": false
+      "completed": true
     },
     {
       "id": "TASK-006",
