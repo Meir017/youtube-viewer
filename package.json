@@ -10,6 +10,7 @@
     "dev-web": "bun --watch run website/server.ts",
     "tools:refresh": "bun run website-tools/refresh.ts",
     "tools:enrich": "bun run website-tools/enrich.ts",
+    "tools:build-static": "bun run website-tools/build-static.ts",
     "test": "bun test tests/unit tests/integration",
     "test:unit": "bun test tests/unit",
     "test:integration": "bun test tests/integration",

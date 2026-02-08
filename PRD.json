@@ -1,801 +1,178 @@
 {
-  "title": "YouTube Viewer Testing Implementation",
+  "title": "YouTube Viewer - Static Website",
   "version": "1.0.0",
-  "description": "Add comprehensive unit tests for the website backend and UI tests using Playwright",
-  "created": "2026-02-05",
+  "description": "Add a static website version that serves channels.json directly without a backend server. The static site reuses the existing HTML/CSS and provides a read-only view of pre-generated channel data, deployable to any static host (GitHub Pages, Netlify, S3, etc.).",
+  "created": "2026-02-08",
   "tasks": [
     {
       "id": "TASK-001",
-      "title": "Project Setup - Testing Infrastructure",
-      "priority": "critical",
-      "type": "setup",
-      "completed": true,
-      "description": "Set up the testing infrastructure including test runners, configuration files, and directory structure",
+      "title": "Create static site directory structure and build script",
       "requirements": [
-        "Install Bun test runner dependencies (Bun has built-in test runner)",
-        "Install Playwright for UI testing",
-        "Create test directory structure: tests/unit/, tests/integration/, tests/e2e/",
-        "Configure TypeScript for test files",
-        "Add test scripts to package.json",
-        "Create test utilities and helper functions",
-        "Set up test fixtures directory for mock data"
+        "Create a static-website/ directory at the project root",
+        "Create a build script (website-tools/build-static.ts) that copies website/public/ files and channels.json into a self-contained static-website/dist/ output folder",
+        "The build script should accept --output=<dir> to configure the output directory",
+        "The build script should follow the CLI format of the enrich/refresh tools (colored header, progress, summary)",
+        "Add a tools:build-static script to package.json",
+        "The build output must be a fully self-contained directory (HTML, CSS, JS, data) that can be served by any static file server",
+        "The default output directory (dist/static/) must be added to .gitignore"
       ],
-      "definitionOfDone": [
-        "package.json includes test scripts: 'test', 'test:unit', 'test:e2e', 'test:watch'",
-        "Playwright is installed and configured with playwright.config.ts",
-        "Test directory structure exists with proper tsconfig settings",
-        "A sample test file runs successfully with 'bun test'",
-        "Test utilities module exists at tests/utils/index.ts"
+      "dod": [
+        "static-website/ directory exists with source files",
+        "Running bun run tools:build-static produces a dist/static/ directory with all needed files",
+        "The output directory contains index.html, styles.css, app.js, and data/channels.json",
+        "package.json has a tools:build-static script",
+        "dist/static/ is listed in .gitignore"
       ],
-      "verificationSteps": [
-        "Run 'bun test' and verify it finds test files",
-        "Run 'bunx playwright test --help' and verify Playwright is available",
-        "Verify tests/unit/, tests/e2e/ directories exist",
-        "Verify test utilities can be imported in test files"
+      "verification": [
+        "Run bun run tools:build-static and verify the output directory is created",
+        "Verify all required files exist in the output",
+        "Serve the output with a simple static server (e.g., bunx serve dist/static) and verify it loads"
       ],
-      "estimatedHours": 2
+      "completed": true
     },
     {
       "id": "TASK-002",
-      "title": "Refactor Server - Extract Route Handlers",
-      "priority": "critical",
-      "type": "refactoring",
-      "completed": true,
-      "description": "Extract route handlers from server.ts into separate testable modules to enable unit testing without starting the full server",
+      "title": "Create static-aware app.js that works without a backend",
       "requirements": [
-        "Create website/routes/collections.ts for collection CRUD operations",
-        "Create website/routes/channels.ts for channel operations within collections",
-        "Create website/routes/enrichment.ts for enrichment API endpoints",
-        "Create website/routes/hidden.ts for hidden videos API",
-        "Create website/routes/cache.ts for image cache API",
-        "Create website/routes/images.ts for image proxy routes",
-        "Create website/store.ts to abstract data persistence (loadStore, saveStore)",
-        "Keep server.ts as thin orchestration layer",
-        "Ensure all route handlers are pure functions that receive request and dependencies"
+        "Create static-website/app.js forked from website/public/app.js",
+        "Replace all fetch() calls to /api/* with direct reads from a bundled channels.json file (loaded via fetch of a relative data/channels.json path)",
+        "On startup, load data/channels.json and populate collections/channels/videos state directly",
+        "Remove all write operations: add channel, delete channel, refresh channel, add/delete collection, rename collection, hide/unhide video, enrichment start",
+        "Remove the enrichment panel UI and polling logic entirely",
+        "Remove the add-channel form, add-collection button, delete buttons, refresh buttons, rename modals, and max-age Apply button",
+        "Keep all read-only features: video grid with virtual scroll, search, sort, duration filter, channel tabs, shorts section, video player modal",
+        "Replace /img/ and /avatar/ proxy URLs with direct YouTube thumbnail URLs (i.ytimg.com for thumbnails, yt3.ggpht.com for avatars stored in channel data)",
+        "The app.js must work with zero backend API calls"
       ],
-      "definitionOfDone": [
-        "Each route module exports handler functions that can be called directly in tests",
-        "server.ts imports and uses the route handlers",
-        "Store operations are abstracted behind an interface for mocking",
-        "No direct file system calls in route handlers (use injected store)",
-        "All existing functionality works unchanged after refactoring",
-        "Route handlers accept dependencies as parameters (dependency injection)"
+      "dod": [
+        "static-website/app.js loads data from a local data/channels.json file",
+        "No fetch calls to /api/ endpoints exist in the static app.js",
+        "All read-only features (search, sort, filter, virtual scroll, video modal) work identically to the dynamic version",
+        "Image URLs point directly to YouTube CDN instead of the proxy",
+        "No UI elements for mutation operations (add, delete, refresh, enrich, hide) are present"
       ],
-      "verificationSteps": [
-        "Run 'bun run web' and verify all API endpoints still work",
-        "Manually test adding/removing collections and channels",
-        "Verify image proxy routes still serve images",
-        "Check that enrichment can be started and monitored"
+      "verification": [
+        "Search static app.js for /api/ - should return no results",
+        "Open the static site in a browser and verify videos display correctly",
+        "Verify search, sort, and duration filters work",
+        "Verify video player modal opens and plays videos",
+        "Verify channel tab filtering works",
+        "Verify thumbnail and avatar images load directly from YouTube CDN",
+        "Open browser DevTools Network tab and confirm no failed API requests"
       ],
-      "estimatedHours": 6
+      "completed": false
     },
     {
       "id": "TASK-003",
-      "title": "Refactor - Abstract External Dependencies",
-      "priority": "high",
-      "type": "refactoring",
-      "completed": true,
-      "description": "Create abstractions for external dependencies (YouTube API, file system) to enable mocking in tests",
+      "title": "Create static index.html stripped of interactive elements",
       "requirements": [
-        "Create website/interfaces/youtube-api.ts with interface for YouTube fetching",
-        "Create website/interfaces/store.ts with interface for data persistence",
-        "Create website/interfaces/image-fetcher.ts with interface for image fetching",
-        "Update channel-processor.ts to accept YouTube API as dependency",
-        "Update image-cache.ts to accept file system operations as dependency",
-        "Create mock implementations in tests/mocks/ directory"
+        "Create static-website/index.html forked from website/public/index.html",
+        "Remove the add-channel form (#addChannelSection)",
+        "Remove the add-collection button (#addCollectionBtn) and its modal (#addCollectionModal)",
+        "Remove the rename-collection modal (#renameCollectionModal)",
+        "Remove the enrichment panel container from catalog filters",
+        "Remove the max-age Apply button and input (the data is pre-generated)",
+        "Remove the refresh button (#refreshAllBtn)",
+        "Keep all read-only structural elements: header stats, collection tabs, channel tabs, video/shorts sections with search/sort/filter, video modal, loading overlay",
+        "Reference the static app.js (not the dynamic one)",
+        "Add a footer note indicating this is a static snapshot"
       ],
-      "definitionOfDone": [
-        "All external I/O operations go through injectable interfaces",
-        "Mock implementations exist for all interfaces",
-        "Production code uses real implementations by default",
-        "Test code can inject mock implementations",
-        "No breaking changes to existing functionality"
+      "dod": [
+        "static-website/index.html exists without any interactive mutation elements",
+        "The HTML references the correct static app.js and styles.css",
+        "All read-only structural elements are preserved",
+        "A static snapshot indicator is visible in the footer"
       ],
-      "verificationSteps": [
-        "Run the web server and verify it still fetches real YouTube data",
-        "Create a test that uses mock YouTube API and verify it works",
-        "Verify mock store can be used instead of file-based store"
+      "verification": [
+        "Open the static index.html and verify no add/delete/refresh/enrich buttons are visible",
+        "Verify the collection tabs, channel tabs, video grid, and shorts section render correctly",
+        "Verify the page title and header display properly"
       ],
-      "estimatedHours": 4
+      "completed": false
     },
     {
       "id": "TASK-004",
-      "title": "Unit Tests - Store Operations",
-      "priority": "high",
-      "type": "testing",
-      "completed": true,
-      "description": "Write unit tests for data store operations (load, save, migrate)",
+      "title": "Create or reuse styles.css for the static site",
       "requirements": [
-        "Test loadStore() returns empty store when file doesn't exist",
-        "Test loadStore() correctly parses existing data",
-        "Test loadStore() migrates legacy format (channels array) to collections",
-        "Test saveStore() writes data correctly",
-        "Test store handles corrupted JSON gracefully",
-        "Test concurrent read/write operations"
+        "Copy website/public/styles.css to static-website/styles.css",
+        "Remove styles for elements that no longer exist (add-channel form, enrichment panel, refresh button, modals for add/rename)",
+        "Optionally add a subtle style for the static snapshot footer indicator",
+        "Ensure all read-only component styles are preserved (video cards, shorts cards, channel tabs, collection tabs, search, sort buttons, video modal, virtual scroll)"
       ],
-      "definitionOfDone": [
-        "Test file exists at tests/unit/store.test.ts",
-        "All store operations have at least one test",
-        "Edge cases (empty, corrupted, legacy format) are covered",
-        "Tests pass with 'bun test tests/unit/store.test.ts'",
-        "Code coverage for store module is >80%"
+      "dod": [
+        "static-website/styles.css exists and contains only styles relevant to the static site",
+        "No broken style references to removed elements",
+        "The visual appearance of read-only components matches the dynamic site"
       ],
-      "verificationSteps": [
-        "Run 'bun test tests/unit/store.test.ts'",
-        "Verify all tests pass",
-        "Check test output shows coverage metrics"
+      "verification": [
+        "Open the static site and compare visual appearance to the dynamic site",
+        "Verify no CSS errors in browser DevTools console",
+        "Verify responsive layout works at different viewport sizes"
       ],
-      "estimatedHours": 3
+      "completed": false
     },
     {
       "id": "TASK-005",
-      "title": "Unit Tests - Collections API",
-      "priority": "high",
-      "type": "testing",
-      "completed": true,
-      "description": "Write unit tests for collections CRUD operations",
+      "title": "Build script copies and assembles the static output",
       "requirements": [
-        "Test GET /api/collections returns all collections",
-        "Test POST /api/collections creates new collection with valid name",
-        "Test POST /api/collections returns 400 for empty name",
-        "Test PUT /api/collections/:id updates collection name",
-        "Test PUT /api/collections/:id returns 404 for non-existent collection",
-        "Test DELETE /api/collections/:id removes collection",
-        "Test DELETE /api/collections/:id returns 404 for non-existent collection"
+        "The build-static.ts script should: load channels.json from website/data/channels.json, copy static-website/index.html, static-website/app.js, static-website/styles.css into the output directory, write channels.json into output/data/channels.json",
+        "Support a --output flag for the output directory (default: dist/static)",
+        "Validate that channels.json exists before building",
+        "Print a summary of files written and total size",
+        "Follow the CLI format pattern (colored header box, progress, summary footer)"
       ],
-      "definitionOfDone": [
-        "Test file exists at tests/unit/routes/collections.test.ts",
-        "All CRUD operations have positive and negative test cases",
-        "Tests use mock store, not real file system",
-        "Tests verify correct HTTP status codes and response bodies",
-        "Tests pass with 'bun test tests/unit/routes/collections.test.ts'"
+      "dod": [
+        "website-tools/build-static.ts exists and produces a complete static site",
+        "The output directory is self-contained and servable",
+        "The build prints a clear summary of what was generated"
       ],
-      "verificationSteps": [
-        "Run 'bun test tests/unit/routes/collections.test.ts'",
-        "Verify all tests pass",
-        "Verify error cases return appropriate status codes"
+      "verification": [
+        "Run bun run tools:build-static and verify output",
+        "Serve output directory with any static server and verify full functionality",
+        "Run bun run tools:build-static --help and verify help text"
       ],
-      "estimatedHours": 3
+      "completed": false
     },
     {
       "id": "TASK-006",
-      "title": "Unit Tests - Channels API",
-      "priority": "high",
-      "type": "testing",
-      "completed": true,
-      "description": "Write unit tests for channel operations within collections",
+      "title": "Add unit tests for static site build script",
       "requirements": [
-        "Test GET /api/collections/:id/channels returns channels for collection",
-        "Test GET /api/collections/:id/channels with maxAgeDays refreshes channels",
-        "Test POST /api/collections/:id/channels adds new channel",
-        "Test POST /api/collections/:id/channels normalizes handle (adds @)",
-        "Test POST /api/collections/:id/channels returns 409 for duplicate channel",
-        "Test DELETE /api/collections/:id/channels/:channelId removes channel",
-        "Test POST /api/collections/:id/channels/:channelId/refresh refreshes single channel",
-        "Test refresh preserves enrichment data"
+        "Add tests in tests/unit/build-static.test.ts",
+        "Test that the build script correctly copies all required files",
+        "Test that channels.json is embedded in the output",
+        "Test the --help flag",
+        "Test error handling when channels.json is missing"
       ],
-      "definitionOfDone": [
-        "Test file exists at tests/unit/routes/channels.test.ts",
-        "All channel operations have positive and negative test cases",
-        "Tests use mock YouTube API to avoid real network calls",
-        "Tests verify enrichment data preservation during refresh",
-        "Tests pass with 'bun test tests/unit/routes/channels.test.ts'"
+      "dod": [
+        "tests/unit/build-static.test.ts exists with passing tests",
+        "Tests cover the main build script logic",
+        "All existing tests continue to pass"
       ],
-      "verificationSteps": [
-        "Run 'bun test tests/unit/routes/channels.test.ts'",
-        "Verify all tests pass",
-        "Verify no real network calls are made during tests"
+      "verification": [
+        "Run bun test tests/unit/build-static.test.ts and verify all tests pass",
+        "Run bun test to verify no regressions"
       ],
-      "estimatedHours": 4
+      "completed": false
     },
     {
       "id": "TASK-007",
-      "title": "Unit Tests - Channel Processor",
-      "priority": "high",
-      "type": "testing",
-      "completed": true,
-      "description": "Write unit tests for channel-processor.ts video fetching and filtering logic",
+      "title": "Update documentation",
       "requirements": [
-        "Test processChannelForWeb returns channel data and videos",
-        "Test video age filtering (maxAgeDays parameter)",
-        "Test video duration filtering (minLengthSeconds parameter)",
-        "Test video limit calculation based on maxAgeDays",
-        "Test pagination fetches more videos up to limit",
-        "Test shorts are correctly identified",
-        "Test channel URL construction for handles vs channel IDs"
+        "Update README.md with a section about the static website",
+        "Document how to generate the static site: 1) set up collections via bun run web, 2) run bun run tools:build-static, 3) deploy the output directory",
+        "Document the tools:build-static CLI options",
+        "Add AGENTS.md entry for the static-website directory"
       ],
-      "definitionOfDone": [
-        "Test file exists at tests/unit/channel-processor.test.ts",
-        "Tests use mock YouTube API responses (fixtures)",
-        "All filtering logic has test coverage",
-        "Edge cases (empty channel, no videos, all shorts) are covered",
-        "Tests pass with 'bun test tests/unit/channel-processor.test.ts'"
+      "dod": [
+        "README.md includes static website documentation",
+        "AGENTS.md references the static-website directory",
+        "A user can follow the docs to generate and deploy a static site"
       ],
-      "verificationSteps": [
-        "Run 'bun test tests/unit/channel-processor.test.ts'",
-        "Verify all tests pass",
-        "Verify fixture data is used instead of real API calls"
+      "verification": [
+        "Read the README static website section and verify it is clear and complete",
+        "Follow the documented steps end-to-end on a fresh build"
       ],
-      "estimatedHours": 4
-    },
-    {
-      "id": "TASK-008",
-      "title": "Unit Tests - Image Cache",
-      "priority": "medium",
-      "type": "testing",
-      "completed": true,
-      "description": "Write unit tests for image caching proxy functionality",
-      "requirements": [
-        "Test getCachedImage returns cached file when available",
-        "Test getCachedImage fetches and caches new image",
-        "Test getCachedImage handles fetch errors gracefully",
-        "Test getCachedAvatar validates YouTube domain",
-        "Test getCacheStats returns correct counts",
-        "Test clearCache removes all cached files",
-        "Test sanitizeHandle removes special characters"
-      ],
-      "definitionOfDone": [
-        "Test file exists at tests/unit/image-cache.test.ts",
-        "Tests use mock file system and mock fetch",
-        "Cache hit/miss scenarios are tested",
-        "Error handling is verified",
-        "Tests pass with 'bun test tests/unit/image-cache.test.ts'"
-      ],
-      "verificationSteps": [
-        "Run 'bun test tests/unit/image-cache.test.ts'",
-        "Verify all tests pass",
-        "Verify no real images are fetched during tests"
-      ],
-      "estimatedHours": 3
-    },
-    {
-      "id": "TASK-009",
-      "title": "Unit Tests - Video Enrichment",
-      "priority": "medium",
-      "type": "testing",
-      "completed": true,
-      "description": "Write unit tests for video enrichment job management",
-      "requirements": [
-        "Test startEnrichment creates new job",
-        "Test startEnrichment returns existing job if already running",
-        "Test getEnrichmentStatus returns correct statistics",
-        "Test calculateEnrichmentStats counts videos correctly",
-        "Test enrichment skips shorts and already-enriched videos",
-        "Test enrichment handles rate limiting (429 errors)",
-        "Test enrichment saves progress periodically",
-        "Test concurrent worker processing"
-      ],
-      "definitionOfDone": [
-        "Test file exists at tests/unit/video-enrichment.test.ts",
-        "Tests use mock video details fetcher",
-        "Rate limiting behavior is verified",
-        "Progress tracking is tested",
-        "Tests pass with 'bun test tests/unit/video-enrichment.test.ts'"
-      ],
-      "verificationSteps": [
-        "Run 'bun test tests/unit/video-enrichment.test.ts'",
-        "Verify all tests pass",
-        "Verify rate limiting test simulates 429 error correctly"
-      ],
-      "estimatedHours": 4
-    },
-    {
-      "id": "TASK-010",
-      "title": "Unit Tests - Hidden Videos API",
-      "priority": "medium",
-      "type": "testing",
-      "completed": true,
-      "description": "Write unit tests for hidden videos functionality",
-      "requirements": [
-        "Test GET /api/collections/:id/hidden returns hidden video IDs",
-        "Test POST /api/collections/:id/hidden/:videoId hides a video",
-        "Test POST /api/collections/:id/hidden/:videoId doesn't duplicate",
-        "Test DELETE /api/collections/:id/hidden/:videoId unhides a video",
-        "Test hidden videos persist across sessions"
-      ],
-      "definitionOfDone": [
-        "Test file exists at tests/unit/routes/hidden.test.ts",
-        "All hide/unhide operations are tested",
-        "Edge cases (already hidden, not hidden) are covered",
-        "Tests pass with 'bun test tests/unit/routes/hidden.test.ts'"
-      ],
-      "verificationSteps": [
-        "Run 'bun test tests/unit/routes/hidden.test.ts'",
-        "Verify all tests pass"
-      ],
-      "estimatedHours": 2
-    },
-    {
-      "id": "TASK-011",
-      "title": "Create Test Fixtures",
-      "priority": "high",
-      "type": "setup",
-      "completed": true,
-      "description": "Create realistic test fixtures for YouTube API responses and channel data",
-      "requirements": [
-        "Create fixture for YouTube channel page HTML response",
-        "Create fixture for YouTube browse API response (video list)",
-        "Create fixture for YouTube video details response",
-        "Create fixture for channel data with various video types",
-        "Create fixture for collection with multiple channels",
-        "Document fixture structure in tests/fixtures/README.md"
-      ],
-      "definitionOfDone": [
-        "Fixtures directory exists at tests/fixtures/",
-        "At least 5 fixture files for different scenarios",
-        "Fixtures are realistic (based on actual YouTube responses)",
-        "README documents how to use and update fixtures",
-        "Fixtures can be imported in test files"
-      ],
-      "verificationSteps": [
-        "Verify fixtures directory exists with JSON files",
-        "Import a fixture in a test and verify it works",
-        "Read README and verify it explains fixture usage"
-      ],
-      "estimatedHours": 3
-    },
-    {
-      "id": "TASK-012",
-      "title": "E2E Tests - Playwright Setup",
-      "priority": "high",
-      "type": "setup",
-      "completed": true,
-      "description": "Set up Playwright for end-to-end UI testing",
-      "requirements": [
-        "Create playwright.config.ts with proper settings",
-        "Configure base URL to http://localhost:3000",
-        "Set up test server start/stop in global setup",
-        "Create page object models for main pages",
-        "Configure screenshot on failure",
-        "Set up HTML reporter for test results"
-      ],
-      "definitionOfDone": [
-        "playwright.config.ts exists with proper configuration",
-        "Global setup starts test server before tests",
-        "Global teardown stops test server after tests",
-        "Page object model exists at tests/e2e/pages/",
-        "Running 'bunx playwright test' executes tests",
-        "HTML report is generated after test run"
-      ],
-      "verificationSteps": [
-        "Run 'bunx playwright test' and verify it starts server",
-        "Verify test report is generated at playwright-report/",
-        "Verify screenshots are captured on failure"
-      ],
-      "estimatedHours": 3
-    },
-    {
-      "id": "TASK-013",
-      "title": "E2E Tests - Collection Management",
-      "priority": "high",
-      "type": "testing",
-      "completed": true,
-      "description": "Write Playwright tests for collection management UI",
-      "requirements": [
-        "Test creating a new collection via modal",
-        "Test collection appears in tabs after creation",
-        "Test selecting a collection loads its channels",
-        "Test renaming a collection",
-        "Test deleting a collection with confirmation",
-        "Test empty state when no collections exist"
-      ],
-      "definitionOfDone": [
-        "Test file exists at tests/e2e/collections.spec.ts",
-        "All collection UI operations are tested",
-        "Tests use isolated test data (cleaned up after)",
-        "Tests are stable and don't flake",
-        "Tests pass with 'bunx playwright test tests/e2e/collections.spec.ts'"
-      ],
-      "verificationSteps": [
-        "Run 'bunx playwright test tests/e2e/collections.spec.ts'",
-        "Verify all tests pass",
-        "Run tests multiple times to check for flakiness"
-      ],
-      "estimatedHours": 4
-    },
-    {
-      "id": "TASK-014",
-      "title": "E2E Tests - Channel Management",
-      "priority": "high",
-      "type": "testing",
-      "completed": true,
-      "description": "Write Playwright tests for channel management UI",
-      "requirements": [
-        "Test adding a channel by handle",
-        "Test channel appears in tabs after adding",
-        "Test error message for invalid channel",
-        "Test error message for duplicate channel",
-        "Test removing a channel with confirmation",
-        "Test channel filter shows only that channel's videos",
-        "Test 'All Channels' filter shows all videos"
-      ],
-      "definitionOfDone": [
-        "Test file exists at tests/e2e/channels.spec.ts",
-        "All channel UI operations are tested",
-        "Tests mock YouTube API to avoid rate limiting",
-        "Error handling is verified",
-        "Tests pass with 'bunx playwright test tests/e2e/channels.spec.ts'"
-      ],
-      "verificationSteps": [
-        "Run 'bunx playwright test tests/e2e/channels.spec.ts'",
-        "Verify all tests pass",
-        "Verify error messages appear correctly"
-      ],
-      "estimatedHours": 4
-    },
-    {
-      "id": "TASK-015",
-      "title": "E2E Tests - Video Display and Filtering",
-      "priority": "high",
-      "type": "testing",
-      "completed": true,
-      "description": "Write Playwright tests for video grid display and filtering",
-      "requirements": [
-        "Test videos display in grid layout",
-        "Test video cards show title, views, duration, date",
-        "Test search filters videos by title",
-        "Test sort by views, date, duration works",
-        "Test duration filter (min/max) works",
-        "Test max age filter reloads videos",
-        "Test shorts section displays separately",
-        "Test virtual scroll loads more videos on scroll"
-      ],
-      "definitionOfDone": [
-        "Test file exists at tests/e2e/videos.spec.ts",
-        "All filtering and sorting operations are tested",
-        "Virtual scroll behavior is verified",
-        "Tests use pre-seeded test data",
-        "Tests pass with 'bunx playwright test tests/e2e/videos.spec.ts'"
-      ],
-      "verificationSteps": [
-        "Run 'bunx playwright test tests/e2e/videos.spec.ts'",
-        "Verify all tests pass",
-        "Verify sort order changes are reflected in UI"
-      ],
-      "estimatedHours": 5
-    },
-    {
-      "id": "TASK-016",
-      "title": "E2E Tests - Video Modal",
-      "priority": "medium",
-      "type": "testing",
-      "completed": true,
-      "description": "Write Playwright tests for video player modal",
-      "requirements": [
-        "Test clicking video opens modal",
-        "Test modal shows video title and channel",
-        "Test modal shows YouTube embed",
-        "Test 'Watch on YouTube' link opens correct URL",
-        "Test closing modal with X button",
-        "Test closing modal with Escape key",
-        "Test closing modal by clicking backdrop",
-        "Test enriched videos show description in modal"
-      ],
-      "definitionOfDone": [
-        "Test file exists at tests/e2e/video-modal.spec.ts",
-        "All modal interactions are tested",
-        "Keyboard navigation is verified",
-        "Tests pass with 'bunx playwright test tests/e2e/video-modal.spec.ts'"
-      ],
-      "verificationSteps": [
-        "Run 'bunx playwright test tests/e2e/video-modal.spec.ts'",
-        "Verify all tests pass",
-        "Verify modal opens and closes correctly"
-      ],
-      "estimatedHours": 3
-    },
-    {
-      "id": "TASK-017",
-      "title": "E2E Tests - Hidden Videos",
-      "priority": "medium",
-      "type": "testing",
-      "completed": true,
-      "description": "Write Playwright tests for hidden videos functionality",
-      "requirements": [
-        "Test hide button appears on video cards",
-        "Test clicking hide removes video from view",
-        "Test hidden tab appears when videos are hidden",
-        "Test switching to hidden view shows hidden videos",
-        "Test unhide button works in hidden view",
-        "Test hidden count badge updates correctly"
-      ],
-      "definitionOfDone": [
-        "Test file exists at tests/e2e/hidden-videos.spec.ts",
-        "All hide/unhide UI operations are tested",
-        "State persistence is verified (after page reload)",
-        "Tests pass with 'bunx playwright test tests/e2e/hidden-videos.spec.ts'"
-      ],
-      "verificationSteps": [
-        "Run 'bunx playwright test tests/e2e/hidden-videos.spec.ts'",
-        "Verify all tests pass",
-        "Verify hidden videos persist after reload"
-      ],
-      "estimatedHours": 3
-    },
-    {
-      "id": "TASK-018",
-      "title": "E2E Tests - Enrichment UI",
-      "priority": "medium",
-      "type": "testing",
-      "completed": true,
-      "description": "Write Playwright tests for video enrichment UI",
-      "requirements": [
-        "Test enrichment panel shows status",
-        "Test 'Enrich' button starts enrichment",
-        "Test progress bar updates during enrichment",
-        "Test completion message after enrichment",
-        "Test rate limit warning display",
-        "Test enriched videos show date badge"
-      ],
-      "definitionOfDone": [
-        "Test file exists at tests/e2e/enrichment.spec.ts",
-        "Enrichment UI states are tested",
-        "Progress updates are verified",
-        "Tests use mock API to speed up enrichment",
-        "Tests pass with 'bunx playwright test tests/e2e/enrichment.spec.ts'"
-      ],
-      "verificationSteps": [
-        "Run 'bunx playwright test tests/e2e/enrichment.spec.ts'",
-        "Verify all tests pass",
-        "Verify progress bar animates during test"
-      ],
-      "estimatedHours": 3
-    },
-    {
-      "id": "TASK-019",
-      "title": "E2E Tests - Responsive Design",
-      "priority": "low",
-      "type": "testing",
-      "completed": true,
-      "description": "Write Playwright tests for responsive behavior",
-      "requirements": [
-        "Test mobile viewport shows correct layout",
-        "Test tablet viewport shows correct layout",
-        "Test video grid adjusts columns based on width",
-        "Test modal is usable on mobile",
-        "Test all interactive elements are accessible on mobile"
-      ],
-      "definitionOfDone": [
-        "Test file exists at tests/e2e/responsive.spec.ts",
-        "Tests run in multiple viewport sizes",
-        "Layout breakpoints are verified",
-        "Tests pass with 'bunx playwright test tests/e2e/responsive.spec.ts'"
-      ],
-      "verificationSteps": [
-        "Run 'bunx playwright test tests/e2e/responsive.spec.ts'",
-        "Verify all tests pass",
-        "Verify screenshots show correct layouts"
-      ],
-      "estimatedHours": 2
-    },
-    {
-      "id": "TASK-020",
-      "title": "Integration Tests - Full API Flow",
-      "priority": "medium",
-      "type": "testing",
-      "completed": true,
-      "description": "Write integration tests that test full API flows with real server",
-      "requirements": [
-        "Test creating collection -> adding channel -> viewing videos flow",
-        "Test refresh flow preserves enrichment data",
-        "Test concurrent API requests don't corrupt data",
-        "Test server handles malformed requests gracefully",
-        "Test CORS headers are set correctly"
-      ],
-      "definitionOfDone": [
-        "Test file exists at tests/integration/api-flow.test.ts",
-        "Tests start real server on test port",
-        "Tests use isolated test data directory",
-        "Full user flows are tested end-to-end",
-        "Tests pass with 'bun test tests/integration/'"
-      ],
-      "verificationSteps": [
-        "Run 'bun test tests/integration/'",
-        "Verify all tests pass",
-        "Verify test data is cleaned up after tests"
-      ],
-      "estimatedHours": 4
-    },
-    {
-      "id": "TASK-021",
-      "title": "CI/CD - GitHub Actions Workflow",
-      "priority": "high",
-      "type": "setup",
-      "completed": true,
-      "description": "Set up GitHub Actions workflow for automated testing",
-      "requirements": [
-        "Create .github/workflows/test.yml",
-        "Run unit tests on every push and PR",
-        "Run E2E tests on every push and PR",
-        "Cache Bun dependencies for faster builds",
-        "Cache Playwright browsers",
-        "Upload test artifacts (reports, screenshots) on failure",
-        "Add status badge to README"
-      ],
-      "definitionOfDone": [
-        "GitHub Actions workflow file exists",
-        "Tests run automatically on push/PR",
-        "Test results are visible in GitHub UI",
-        "Artifacts are uploaded on failure",
-        "README has test status badge"
-      ],
-      "verificationSteps": [
-        "Push a commit and verify workflow runs",
-        "Create a PR and verify checks appear",
-        "Verify test artifacts are accessible in Actions tab"
-      ],
-      "estimatedHours": 2
-    },
-    {
-      "id": "TASK-022",
-      "title": "Documentation - Testing Guide",
-      "priority": "low",
-      "type": "documentation",
-      "completed": true,
-      "description": "Document testing practices and how to run tests",
-      "requirements": [
-        "Add TESTING.md with testing overview",
-        "Document how to run unit tests",
-        "Document how to run E2E tests",
-        "Document how to write new tests",
-        "Document test fixtures and mocks",
-        "Document CI/CD test workflow",
-        "Update AGENTS.md with testing commands"
-      ],
-      "definitionOfDone": [
-        "TESTING.md exists with comprehensive guide",
-        "AGENTS.md updated with test commands",
-        "All test commands are documented",
-        "Examples of writing tests are included"
-      ],
-      "verificationSteps": [
-        "Follow TESTING.md instructions to run tests",
-        "Verify all documented commands work",
-        "Verify examples are clear and accurate"
-      ],
-      "estimatedHours": 2
+      "completed": false
     }
-  ],
-  "dependencies": {
-    "TASK-002": [
-      "TASK-001"
-    ],
-    "TASK-003": [
-      "TASK-001"
-    ],
-    "TASK-004": [
-      "TASK-002",
-      "TASK-003"
-    ],
-    "TASK-005": [
-      "TASK-002",
-      "TASK-003",
-      "TASK-011"
-    ],
-    "TASK-006": [
-      "TASK-002",
-      "TASK-003",
-      "TASK-011"
-    ],
-    "TASK-007": [
-      "TASK-003",
-      "TASK-011"
-    ],
-    "TASK-008": [
-      "TASK-003",
-      "TASK-011"
-    ],
-    "TASK-009": [
-      "TASK-003",
-      "TASK-011"
-    ],
-    "TASK-010": [
-      "TASK-002",
-      "TASK-003"
-    ],
-    "TASK-011": [
-      "TASK-001"
-    ],
-    "TASK-012": [
-      "TASK-001"
-    ],
-    "TASK-013": [
-      "TASK-012"
-    ],
-    "TASK-014": [
-      "TASK-012"
-    ],
-    "TASK-015": [
-      "TASK-012"
-    ],
-    "TASK-016": [
-      "TASK-012"
-    ],
-    "TASK-017": [
-      "TASK-012"
-    ],
-    "TASK-018": [
-      "TASK-012"
-    ],
-    "TASK-019": [
-      "TASK-012"
-    ],
-    "TASK-020": [
-      "TASK-002",
-      "TASK-003"
-    ],
-    "TASK-021": [
-      "TASK-001",
-      "TASK-012"
-    ],
-    "TASK-022": [
-      "TASK-001"
-    ]
-  },
-  "phases": [
-    {
-      "name": "Phase 1: Foundation",
-      "description": "Set up testing infrastructure and refactor code for testability",
-      "tasks": [
-        "TASK-001",
-        "TASK-002",
-        "TASK-003",
-        "TASK-011",
-        "TASK-012"
-      ],
-      "estimatedDays": 5
-    },
-    {
-      "name": "Phase 2: Unit Tests",
-      "description": "Write comprehensive unit tests for all backend modules",
-      "tasks": [
-        "TASK-004",
-        "TASK-005",
-        "TASK-006",
-        "TASK-007",
-        "TASK-008",
-        "TASK-009",
-        "TASK-010"
-      ],
-      "estimatedDays": 7
-    },
-    {
-      "name": "Phase 3: E2E Tests",
-      "description": "Write Playwright tests for all UI functionality",
-      "tasks": [
-        "TASK-013",
-        "TASK-014",
-        "TASK-015",
-        "TASK-016",
-        "TASK-017",
-        "TASK-018",
-        "TASK-019"
-      ],
-      "estimatedDays": 6
-    },
-    {
-      "name": "Phase 4: Integration & CI",
-      "description": "Add integration tests and set up CI/CD",
-      "tasks": [
-        "TASK-020",
-        "TASK-021",
-        "TASK-022"
-      ],
-      "estimatedDays": 3
-    }
-  ],
-  "totalEstimatedHours": 72,
-  "technicalNotes": {
-    "testRunner": "Bun has a built-in test runner (bun test) that supports TypeScript natively",
-    "e2eFramework": "Playwright for browser automation and E2E testing",
-    "mocking": "Use Bun's mock module or create manual mocks for external dependencies",
-    "fixtures": "Store realistic YouTube API response fixtures as JSON files",
-    "testIsolation": "Each test should clean up its data to avoid test pollution",
-    "parallelization": "Bun tests run in parallel by default; Playwright can be configured for parallelism"
-  },
-  "refactoringRationale": {
-    "routeExtraction": "Current server.ts has all route logic inline, making it impossible to unit test without starting the full HTTP server. Extracting routes enables direct function testing.",
-    "dependencyInjection": "Hard-coded dependencies (file system, YouTube API) prevent mocking. Injecting dependencies allows swapping real implementations with mocks in tests.",
-    "storeAbstraction": "Direct Bun.file() calls scattered throughout make testing difficult. A store interface allows using in-memory store for tests."
-  }
+  ]
 }
