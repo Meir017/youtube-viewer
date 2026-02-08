@@ -60,7 +60,7 @@
         "Verify thumbnail and avatar images load directly from YouTube CDN",
         "Open browser DevTools Network tab and confirm no failed API requests"
       ],
-      "completed": false
+      "completed": true
     },
     {
       "id": "TASK-003",
