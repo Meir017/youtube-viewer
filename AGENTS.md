@@ -45,6 +45,14 @@ bun run generator/index.ts --channel=@GitHub --html --output=output.html
   - `channel-processor.ts` - Channel fetching for web
   - `public/` - Static frontend files (HTML, CSS, JS)
   - `data/` - Channel storage
+- `website-tools/` - Offline CLI tools for managing website data
+  - `enrich.ts` - Video enrichment tool
+  - `refresh.ts` - Channel refresh tool
+  - `build-static.ts` - Static site build tool
+- `static-website/` - Static website source files (no backend required)
+  - `index.html` - Read-only HTML (no mutation UI)
+  - `app.js` - JavaScript that loads data from local channels.json
+  - `styles.css` - Styles for the static site
 - `dist/` - Generated HTML output files
 
 ## Code Style

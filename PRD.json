@@ -172,7 +172,7 @@
         "Read the README static website section and verify it is clear and complete",
         "Follow the documented steps end-to-end on a fresh build"
       ],
-      "completed": false
+      "completed": true
     }
   ]
 }

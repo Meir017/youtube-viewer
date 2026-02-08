@@ -145,10 +145,50 @@ bun run tools:enrich -- --concurrency=3 --delay=3000
 | `--dry-run` | Show what would be enriched without changes | false |
 | `--limit=<n>` | Max videos to enrich per run | unlimited |
 
-The tool automatically:
-- Saves progress every 10 seconds
-- Stops gracefully on rate limiting (HTTP 429)
-- Skips already-enriched videos and shorts
+### Refresh Channels
+
+Refreshes all channels in the website database, fetching new videos and merging with existing data.
+
+```bash
+# Refresh all collections
+bun run tools:refresh
+
+# Preview what would be refreshed (no changes)
+bun run tools:refresh -- --dry-run
+
+# Refresh a specific collection
+bun run tools:refresh -- --collection=<id>
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--collection=<id>` | Only refresh a specific collection | all |
+| `--dry-run` | Show what would be refreshed without changes | false |
+
+### Build Static Site
+
+Generates a self-contained static website that can be deployed to any static host (GitHub Pages, Netlify, S3, etc.) without a backend server.
+
+```bash
+# Build static site (default output: dist/static/)
+bun run tools:build-static
+
+# Build to a custom output directory
+bun run tools:build-static -- --output=my-site
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--output=<dir>` | Output directory | `dist/static` |
+
+**How to generate and deploy a static site:**
+
+1. Set up collections and channels via `bun run web` (the interactive server)
+2. Optionally enrich videos with `bun run tools:enrich`
+3. Build the static site: `bun run tools:build-static`
+4. Deploy the `dist/static/` directory to any static host
+
+The static site is read-only — it displays the video data as a snapshot without any backend API.
 
 ## Project Structure
 
@@ -169,7 +209,13 @@ youtube-viewer/
 │   │   └── app.js
 │   └── data/               # Channel storage
 ├── website-tools/
-│   └── enrich.ts           # Offline video enrichment tool
+│   ├── enrich.ts           # Offline video enrichment tool
+│   ├── refresh.ts          # Offline channel refresh tool
+│   └── build-static.ts     # Static site build tool
+├── static-website/
+│   ├── index.html          # Static site HTML (read-only)
+│   ├── app.js              # Static site JavaScript (no backend)
+│   └── styles.css          # Static site styles
 ├── package.json            # Bun project configuration
 ├── tsconfig.json           # TypeScript configuration
 ├── LICENSE
