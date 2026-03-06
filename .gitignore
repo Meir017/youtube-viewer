@@ -148,3 +148,6 @@ vite.config.ts.timestamp-*
 
 # Playwright MCP screenshots
 .playwright-mcp/
+
+# Playwright test results
+test-results/
