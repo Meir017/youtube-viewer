@@ -22,6 +22,11 @@ import {
     hideVideo,
     unhideVideo,
 } from '../../website/routes/hidden';
+import {
+    getStarredVideos,
+    starVideo,
+    unstarVideo,
+} from '../../website/routes/starred';
 import { createMockCollection, createMockStoredChannel, createMockChannelData } from '../utils';
 
 /**
@@ -354,6 +359,83 @@ describe('Integration Tests - Full API Flow', () => {
             expect(hidden1).not.toContain('video_in_2');
             expect(hidden2).toContain('video_in_2');
             expect(hidden2).not.toContain('video_in_1');
+        });
+    });
+
+    describe('Starred Videos Flow', () => {
+        test('star and unstar video flow', async () => {
+            const store = createInMemoryStore();
+
+            // Create collection
+            const collection = await (await createCollection({ store }, { name: 'Starred Test' })).json();
+
+            // Initially no starred videos
+            const initialStarred = await (await getStarredVideos({ store }, collection.id)).json();
+            expect(initialStarred).toEqual([]);
+
+            // Star a video
+            await starVideo({ store }, collection.id, 'video123');
+
+            // Verify starred
+            const afterStar = await (await getStarredVideos({ store }, collection.id)).json();
+            expect(afterStar).toContain('video123');
+
+            // Unstar
+            await unstarVideo({ store }, collection.id, 'video123');
+
+            // Verify unstarred
+            const afterUnstar = await (await getStarredVideos({ store }, collection.id)).json();
+            expect(afterUnstar).not.toContain('video123');
+        });
+
+        test('starred videos are isolated per collection', async () => {
+            const store = createInMemoryStore();
+
+            // Create two collections
+            const collection1 = await (await createCollection({ store }, { name: 'Collection 1' })).json();
+            const collection2 = await (await createCollection({ store }, { name: 'Collection 2' })).json();
+
+            // Star video in collection 1
+            await starVideo({ store }, collection1.id, 'video_in_1');
+
+            // Star different video in collection 2
+            await starVideo({ store }, collection2.id, 'video_in_2');
+
+            // Verify isolation
+            const starred1 = await (await getStarredVideos({ store }, collection1.id)).json();
+            const starred2 = await (await getStarredVideos({ store }, collection2.id)).json();
+
+            expect(starred1).toContain('video_in_1');
+            expect(starred1).not.toContain('video_in_2');
+            expect(starred2).toContain('video_in_2');
+            expect(starred2).not.toContain('video_in_1');
+        });
+
+        test('starring and hiding are independent operations', async () => {
+            const store = createInMemoryStore();
+
+            // Create collection
+            const collection = await (await createCollection({ store }, { name: 'Independent Test' })).json();
+
+            // Star and hide the same video
+            await starVideo({ store }, collection.id, 'video123');
+            await hideVideo({ store }, collection.id, 'video123');
+
+            // Verify both lists contain it
+            const starred = await (await getStarredVideos({ store }, collection.id)).json();
+            const hidden = await (await getHiddenVideos({ store }, collection.id)).json();
+
+            expect(starred).toContain('video123');
+            expect(hidden).toContain('video123');
+
+            // Unstar should not unhide
+            await unstarVideo({ store }, collection.id, 'video123');
+
+            const starredAfter = await (await getStarredVideos({ store }, collection.id)).json();
+            const hiddenAfter = await (await getHiddenVideos({ store }, collection.id)).json();
+
+            expect(starredAfter).not.toContain('video123');
+            expect(hiddenAfter).toContain('video123');
         });
     });
 

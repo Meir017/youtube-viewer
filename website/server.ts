@@ -9,6 +9,7 @@ import * as collectionsRoutes from './routes/collections';
 import * as channelsRoutes from './routes/channels';
 import * as enrichmentRoutes from './routes/enrichment';
 import * as hiddenRoutes from './routes/hidden';
+import * as starredRoutes from './routes/starred';
 import * as cacheRoutes from './routes/cache';
 import * as imagesRoutes from './routes/images';
 
@@ -41,6 +42,7 @@ const collectionsDeps: collectionsRoutes.CollectionsHandlerDeps = { store };
 const channelsDeps: channelsRoutes.ChannelsHandlerDeps = { store, channelProcessor };
 const enrichmentDeps: enrichmentRoutes.EnrichmentHandlerDeps = { store, enrichmentService };
 const hiddenDeps: hiddenRoutes.HiddenHandlerDeps = { store };
+const starredDeps: starredRoutes.StarredHandlerDeps = { store };
 const cacheDeps: cacheRoutes.CacheHandlerDeps = { imageCache: imageCacheService };
 const imagesDeps: imagesRoutes.ImagesHandlerDeps = { imageService };
 
@@ -222,6 +224,37 @@ const server = Bun.serve({
                     const collectionId = unhideVideoMatch[1];
                     const videoId = unhideVideoMatch[2];
                     return hiddenRoutes.unhideVideo(hiddenDeps, collectionId, videoId);
+                });
+            }
+
+            // ==================== STARRED VIDEOS API ====================
+
+            // GET /api/collections/:collectionId/starred - Get starred video IDs
+            const getStarredMatch = path.match(/^\/api\/collections\/([^/]+)\/starred$/);
+            if (getStarredMatch && req.method === 'GET') {
+                return handleApiRequest(() => {
+                    const collectionId = getStarredMatch[1];
+                    return starredRoutes.getStarredVideos(starredDeps, collectionId);
+                });
+            }
+
+            // POST /api/collections/:collectionId/starred/:videoId - Star a video
+            const starVideoMatch = path.match(/^\/api\/collections\/([^/]+)\/starred\/([^/]+)$/);
+            if (starVideoMatch && req.method === 'POST') {
+                return handleApiRequest(() => {
+                    const collectionId = starVideoMatch[1];
+                    const videoId = starVideoMatch[2];
+                    return starredRoutes.starVideo(starredDeps, collectionId, videoId);
+                });
+            }
+
+            // DELETE /api/collections/:collectionId/starred/:videoId - Unstar a video
+            const unstarVideoMatch = path.match(/^\/api\/collections\/([^/]+)\/starred\/([^/]+)$/);
+            if (unstarVideoMatch && req.method === 'DELETE') {
+                return handleApiRequest(() => {
+                    const collectionId = unstarVideoMatch[1];
+                    const videoId = unstarVideoMatch[2];
+                    return starredRoutes.unstarVideo(starredDeps, collectionId, videoId);
                 });
             }
 

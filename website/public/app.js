@@ -37,6 +37,10 @@ let maxDurationMinutes = Infinity;
 let hiddenVideoIds = new Set();
 let showHiddenVideos = false; // Toggle between regular and hidden videos view
 
+// Starred videos state
+let starredVideoIds = new Set();
+let showStarredVideos = false; // Toggle to show only starred videos
+
 // Enrichment state
 let enrichmentStatus = null;
 let enrichmentPollInterval = null;
@@ -608,10 +612,96 @@ async function unhideVideo(videoId, event) {
 // Toggle between regular and hidden videos view
 function toggleHiddenVideosView(showHidden) {
     showHiddenVideos = showHidden;
+    showStarredVideos = false;
     
     // Update tab styles
     document.querySelectorAll('.view-toggle-tab').forEach(tab => {
         tab.classList.toggle('active', tab.dataset.view === (showHidden ? 'hidden' : 'videos'));
+    });
+    
+    renderVideos();
+}
+
+// ==================== STARRED VIDEOS FUNCTIONS ====================
+
+// Load starred videos for current collection
+async function loadStarredVideos() {
+    if (!activeCollectionId) {
+        starredVideoIds = new Set();
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/collections/${activeCollectionId}/starred`);
+        if (!response.ok) throw new Error('Failed to load starred videos');
+        const starredIds = await response.json();
+        starredVideoIds = new Set(starredIds);
+    } catch (error) {
+        console.error('Error loading starred videos:', error);
+        starredVideoIds = new Set();
+    }
+}
+
+// Star a video
+async function starVideo(videoId, event) {
+    if (event) {
+        event.stopPropagation();
+    }
+    
+    if (!activeCollectionId) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/collections/${activeCollectionId}/starred/${videoId}`, {
+            method: 'POST',
+        });
+        
+        if (!response.ok) throw new Error('Failed to star video');
+        
+        const data = await response.json();
+        starredVideoIds = new Set(data.starredVideos);
+        
+        renderVideos();
+        renderSummaryStats();
+    } catch (error) {
+        showError('Failed to star video');
+        console.error('Star video error:', error);
+    }
+}
+
+// Unstar a video
+async function unstarVideo(videoId, event) {
+    if (event) {
+        event.stopPropagation();
+    }
+    
+    if (!activeCollectionId) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/collections/${activeCollectionId}/starred/${videoId}`, {
+            method: 'DELETE',
+        });
+        
+        if (!response.ok) throw new Error('Failed to unstar video');
+        
+        const data = await response.json();
+        starredVideoIds = new Set(data.starredVideos);
+        
+        renderVideos();
+        renderSummaryStats();
+    } catch (error) {
+        showError('Failed to unstar video');
+        console.error('Unstar video error:', error);
+    }
+}
+
+// Toggle starred videos view
+function toggleStarredVideosView(showStarred) {
+    showStarredVideos = showStarred;
+    showHiddenVideos = false;
+    
+    // Update tab styles
+    document.querySelectorAll('.view-toggle-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.view === (showStarred ? 'starred' : 'videos'));
     });
     
     renderVideos();
@@ -699,7 +789,11 @@ function filterVideos(videos) {
         const isHidden = hiddenVideoIds.has(video.videoId);
         const matchesHiddenFilter = showHiddenVideos ? isHidden : !isHidden;
         
-        return matchesChannel && matchesSearch && matchesMinDuration && matchesMaxDuration && !video.isShort && matchesHiddenFilter;
+        // Starred videos filter
+        const isStarred = starredVideoIds.has(video.videoId);
+        const matchesStarredFilter = showStarredVideos ? isStarred : true;
+        
+        return matchesChannel && matchesSearch && matchesMinDuration && matchesMaxDuration && !video.isShort && matchesHiddenFilter && matchesStarredFilter;
     });
 }
 
@@ -746,6 +840,9 @@ async function loadCollectionChannels(collectionId) {
         // Load hidden videos for this collection
         await loadHiddenVideos();
         
+        // Load starred videos for this collection
+        await loadStarredVideos();
+        
         // Fetch enrichment status
         enrichmentStatus = await fetchEnrichmentStatus();
         
@@ -761,6 +858,7 @@ async function loadCollectionChannels(collectionId) {
         allShorts = [];
         enrichmentStatus = null;
         hiddenVideoIds = new Set();
+        starredVideoIds = new Set();
     } finally {
         showLoading(false);
     }
@@ -933,6 +1031,10 @@ async function selectCollection(id) {
     // Reset hidden videos state
     hiddenVideoIds = new Set();
     showHiddenVideos = false;
+    
+    // Reset starred videos state
+    starredVideoIds = new Set();
+    showStarredVideos = false;
     
     activeCollectionId = id;
     activeChannel = 'all';
@@ -1117,6 +1219,18 @@ function renderSummaryStats() {
         }
     }
     
+    // Update starred videos count in stats
+    const starredStatsContainer = document.getElementById('starredStatContainer');
+    const totalStarredEl = document.getElementById('totalStarred');
+    if (starredStatsContainer && totalStarredEl) {
+        if (starredVideoIds.size > 0) {
+            starredStatsContainer.hidden = false;
+            totalStarredEl.textContent = starredVideoIds.size;
+        } else {
+            starredStatsContainer.hidden = true;
+        }
+    }
+    
     if (allShorts.length > 0) {
         shortsStatContainer.hidden = false;
     } else {
@@ -1172,8 +1286,8 @@ function renderVideos() {
     // Update section title based on view
     const sectionTitle = document.querySelector('#videosSection .section-title');
     if (sectionTitle) {
-        const emoji = showHiddenVideos ? '👁️‍🗨️' : '🎬';
-        const text = showHiddenVideos ? 'Hidden Videos' : 'Videos';
+        const emoji = showStarredVideos ? '⭐' : showHiddenVideos ? '👁️‍🗨️' : '🎬';
+        const text = showStarredVideos ? 'Starred Videos' : showHiddenVideos ? 'Hidden Videos' : 'Videos';
         sectionTitle.innerHTML = `
             ${emoji} ${text}
             <span class="section-count">${sorted.length}</span>
@@ -1204,6 +1318,13 @@ function renderVideos() {
                     <p>Videos you hide will appear here.</p>
                 </div>
             `;
+        } else if (showStarredVideos) {
+            videosGrid.innerHTML = `
+                <div class="empty-state">
+                    <h3>No starred videos</h3>
+                    <p>Click the ⭐ button on a video to star it.</p>
+                </div>
+            `;
         } else {
             videosGrid.innerHTML = `
                 <div class="empty-state">
@@ -1226,7 +1347,7 @@ function renderVideos() {
     videosVirtualScroll.setItems(sorted);
 }
 
-// Render view toggle tabs (Videos / Hidden)
+// Render view toggle tabs (Videos / Starred / Hidden)
 function renderViewToggleTabs() {
     let viewToggle = document.getElementById('viewToggleTabs');
     
@@ -1243,20 +1364,30 @@ function renderViewToggleTabs() {
         }
     }
     
-    // Only show if there are hidden videos
-    if (hiddenVideoIds.size === 0 && !showHiddenVideos) {
+    // Only show if there are starred or hidden videos
+    if (hiddenVideoIds.size === 0 && starredVideoIds.size === 0 && !showHiddenVideos && !showStarredVideos) {
         viewToggle.hidden = true;
         return;
     }
     
     viewToggle.hidden = false;
+    
+    const activeView = showStarredVideos ? 'starred' : showHiddenVideos ? 'hidden' : 'videos';
+    
     viewToggle.innerHTML = `
-        <button class="view-toggle-tab ${!showHiddenVideos ? 'active' : ''}" data-view="videos" onclick="toggleHiddenVideosView(false)">
+        <button class="view-toggle-tab ${activeView === 'videos' ? 'active' : ''}" data-view="videos" onclick="toggleHiddenVideosView(false)">
             🎬 Videos
         </button>
-        <button class="view-toggle-tab ${showHiddenVideos ? 'active' : ''}" data-view="hidden" onclick="toggleHiddenVideosView(true)">
+        ${starredVideoIds.size > 0 || showStarredVideos ? `
+        <button class="view-toggle-tab starred ${activeView === 'starred' ? 'active' : ''}" data-view="starred" onclick="toggleStarredVideosView(true)">
+            ⭐ Starred <span class="starred-count">${starredVideoIds.size}</span>
+        </button>
+        ` : ''}
+        ${hiddenVideoIds.size > 0 || showHiddenVideos ? `
+        <button class="view-toggle-tab ${activeView === 'hidden' ? 'active' : ''}" data-view="hidden" onclick="toggleHiddenVideosView(true)">
             👁️‍🗨️ Hidden <span class="hidden-count">${hiddenVideoIds.size}</span>
         </button>
+        ` : ''}
     `;
 }
 
@@ -1319,13 +1450,18 @@ function renderVideoCard(video) {
         ? `<button class="hide-video-btn unhide" onclick="unhideVideo('${videoId}', event)" title="Unhide video">👁️</button>`
         : `<button class="hide-video-btn" onclick="hideVideo('${videoId}', event)" title="Hide video">🙈</button>`;
     
+    // Star/Unstar button
+    const isStarred = starredVideoIds.has(videoId);
+    const starButton = `<button class="star-video-btn${isStarred ? ' starred' : ''}" onclick="${isStarred ? 'unstarVideo' : 'starVideo'}('${videoId}', event)" title="${isStarred ? 'Unstar video' : 'Star video'}">${isStarred ? '⭐' : '☆'}</button>`;
+    
     return `
-        <article class="video-card${description ? ' is-enriched' : ''}" onclick="openVideoModalById('${videoId}')" style="cursor: pointer;">
+        <article class="video-card${description ? ' is-enriched' : ''}${isStarred ? ' is-starred' : ''}" onclick="openVideoModalById('${videoId}')" style="cursor: pointer;">
             <div class="video-thumbnail">
                 ${showChannelIndicator ? `<span class="channel-indicator" style="--channel-color: ${channelColor};">${avatarUrl ? `<img src="${avatarUrl}" alt="" class="channel-indicator-icon">` : ''}${escapeHtml(channelTitle)}</span>` : ''}
                 <img src="${thumbnail}" alt="${escapeHtml(title)}" loading="lazy">
                 ${duration ? `<span class="video-duration">${escapeHtml(duration)}</span>` : ''}
                 ${enrichedBadge}
+                ${starButton}
                 ${hideButton}
             </div>
             <div class="video-info">

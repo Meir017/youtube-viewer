@@ -45,6 +45,7 @@ export interface Collection {
     channels: StoredChannel[];
     createdAt: string;
     hiddenVideos?: string[]; // Array of video IDs that are hidden
+    starredVideos?: string[]; // Array of video IDs that are starred/favorited
 }
 
 // In-memory job tracking
