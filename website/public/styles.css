@@ -1122,6 +1122,9 @@ body {
     position: relative;
     width: 90vw;
     max-width: 1200px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
     background: linear-gradient(135deg, #2d3436 0%, #1e272e 100%);
     border-radius: 16px;
     overflow: hidden;
@@ -1155,6 +1158,7 @@ body {
     width: 100%;
     padding-top: 56.25%; /* 16:9 aspect ratio */
     background: #000;
+    flex-shrink: 0;
 }
 
 .video-modal-player iframe {
@@ -1167,6 +1171,9 @@ body {
 
 .video-modal-info {
     padding: 20px 25px;
+    overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 .video-modal-info h3 {
@@ -1197,8 +1204,6 @@ body {
     font-size: 0.9rem;
     color: rgba(255,255,255,0.8);
     line-height: 1.6;
-    max-height: 200px;
-    overflow-y: auto;
     white-space: pre-wrap;
     word-break: break-word;
 }
@@ -1232,6 +1237,129 @@ body {
     background: #cc0000;
     transform: translateY(-2px);
     box-shadow: 0 5px 20px rgba(255, 0, 0, 0.4);
+}
+
+/* AI Insights Section */
+.video-modal-insights {
+    margin: 15px 0 5px;
+    padding: 18px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.08) 100%);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+    border-radius: 12px;
+}
+
+.video-modal-insights[hidden] {
+    display: none;
+}
+
+.video-modal-insights.fade-in {
+    animation: insightsFadeIn 0.4s ease-out;
+}
+
+@keyframes insightsFadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.insights-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.7);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.insights-icon {
+    font-size: 1rem;
+}
+
+.insights-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 0;
+}
+
+.insights-loading-svg {
+    width: 72px;
+    height: 72px;
+}
+
+.insights-loading-text {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 0.3px;
+    animation: textPulse 2s ease-in-out infinite;
+}
+
+@keyframes textPulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+}
+
+.insights-content {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.85);
+    line-height: 1.7;
+}
+
+.insights-content.insights-loaded {
+    animation: contentFadeIn 0.3s ease-out;
+}
+
+@keyframes contentFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.insights-content h2, .insights-content h3, .insights-content h4 {
+    color: rgba(255, 255, 255, 0.95);
+    margin: 12px 0 6px;
+    font-size: 1rem;
+}
+
+.insights-content h2:first-child,
+.insights-content h3:first-child,
+.insights-content h4:first-child {
+    margin-top: 0;
+}
+
+.insights-content p {
+    margin: 6px 0;
+}
+
+.insights-content a {
+    color: #a78bfa;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.insights-content a:hover {
+    color: #c4b5fd;
+}
+
+.insights-content ul {
+    padding-left: 20px;
+    margin: 8px 0;
+}
+
+.insights-content li {
+    margin: 4px 0;
+}
+
+.insights-content hr {
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    margin: 12px 0;
+}
+
+.insights-content strong {
+    color: rgba(255, 255, 255, 0.95);
 }
 
 /* Hidden Videos Feature */
@@ -1398,6 +1526,7 @@ body {
     
     .video-modal-content {
         width: 95vw;
+        max-height: 95vh;
         margin: 10px;
     }
     

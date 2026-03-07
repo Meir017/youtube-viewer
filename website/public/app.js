@@ -1556,7 +1556,14 @@ const videoModalViews = document.getElementById('videoModalViews');
 const videoModalDate = document.getElementById('videoModalDate');
 const videoModalDescription = document.getElementById('videoModalDescription');
 const videoModalLink = document.getElementById('videoModalLink');
+const videoModalInsights = document.getElementById('videoModalInsights');
+const insightsContent = document.getElementById('insightsContent');
 const closeVideoModalBtn = document.getElementById('closeVideoModal');
+
+// Insights state
+let insightsTimer = null;
+let insightsPollInterval = null;
+let currentModalVideoId = null;
 
 // Open video modal by ID (looks up data from registry)
 function openVideoModalById(videoId) {
@@ -1609,15 +1616,144 @@ function openVideoModal(videoData) {
     
     videoModalLink.href = youtubeUrl;
     
+    // Reset insights section
+    videoModalInsights.hidden = true;
+    insightsContent.innerHTML = `<div class="insights-loading"><img src="/copilot-loading.svg" alt="Loading insights..." class="insights-loading-svg"><span class="insights-loading-text">Copilot is researching this video…</span></div>`;
+    currentModalVideoId = videoId;
+    
+    // Start 5-second timer for AI insights
+    clearInsightsTimers();
+    insightsTimer = setTimeout(() => {
+        triggerInsightsResearch(videoId, { title, channelTitle, description, duration: videoData.duration, publishedTime, publishDate, isShort });
+    }, 5000);
+    
     // Show modal
     videoPlayerModal.hidden = false;
     document.body.style.overflow = 'hidden';
 }
 
 function closeVideoModal() {
+    const closingVideoId = currentModalVideoId;
     videoPlayerModal.hidden = true;
     videoPlayerIframe.src = ''; // Stop video playback
     document.body.style.overflow = '';
+    clearInsightsTimers();
+    currentModalVideoId = null;
+
+    // Cancel any in-progress Copilot research for this video
+    if (closingVideoId) {
+        fetch(`${API_BASE}/videos/${closingVideoId}/insights`, { method: 'DELETE' }).catch(() => {});
+    }
+}
+
+// AI Insights Functions
+function clearInsightsTimers() {
+    if (insightsTimer) {
+        clearTimeout(insightsTimer);
+        insightsTimer = null;
+    }
+    if (insightsPollInterval) {
+        clearInterval(insightsPollInterval);
+        insightsPollInterval = null;
+    }
+}
+
+async function triggerInsightsResearch(videoId, meta) {
+    try {
+        // Show the insights section with loading state
+        videoModalInsights.hidden = false;
+        videoModalInsights.classList.remove('fade-in');
+        void videoModalInsights.offsetWidth; // force reflow
+        videoModalInsights.classList.add('fade-in');
+
+        const response = await fetch(`${API_BASE}/videos/${videoId}/insights`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(meta),
+        });
+        const data = await response.json();
+
+        if (data.status === 'complete') {
+            renderInsightsContent(data.content);
+            return;
+        }
+
+        if (data.status === 'error') {
+            videoModalInsights.hidden = true;
+            return;
+        }
+
+        // Start polling for results
+        insightsPollInterval = setInterval(() => pollInsights(videoId), 2000);
+    } catch (err) {
+        console.error('Failed to trigger insights:', err);
+        videoModalInsights.hidden = true;
+    }
+}
+
+async function pollInsights(videoId) {
+    // Stop polling if modal was closed or video changed
+    if (currentModalVideoId !== videoId) {
+        clearInsightsTimers();
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/videos/${videoId}/insights`);
+        const data = await response.json();
+
+        if (data.status === 'complete') {
+            clearInterval(insightsPollInterval);
+            insightsPollInterval = null;
+            renderInsightsContent(data.content);
+        } else if (data.status === 'error') {
+            clearInterval(insightsPollInterval);
+            insightsPollInterval = null;
+            videoModalInsights.hidden = true;
+        }
+    } catch (err) {
+        console.error('Failed to poll insights:', err);
+    }
+}
+
+function renderInsightsContent(markdown) {
+    // Simple markdown to HTML conversion
+    const html = simpleMarkdownToHtml(markdown);
+    insightsContent.innerHTML = html;
+    insightsContent.classList.add('insights-loaded');
+}
+
+function simpleMarkdownToHtml(md) {
+    if (!md) return '';
+    let html = md
+        // Escape HTML entities first
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        // Headers
+        .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+        .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+        .replace(/^# (.+)$/gm, '<h2>$1</h2>')
+        // Bold and italic
+        .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        // Links
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+        // Unordered lists
+        .replace(/^[\-\*] (.+)$/gm, '<li>$1</li>')
+        // Horizontal rules
+        .replace(/^---$/gm, '<hr>')
+        // Paragraphs (double newlines)
+        .replace(/\n\n/g, '</p><p>')
+        // Single newlines within paragraphs
+        .replace(/\n/g, '<br>');
+
+    // Wrap consecutive <li> elements in <ul>
+    html = html.replace(/(<li>.*?<\/li>)(?:<br>)?/g, '$1');
+    html = html.replace(/((?:<li>.*?<\/li>)+)/g, '<ul>$1</ul>');
+
+    return `<p>${html}</p>`;
 }
 
 // Video modal event listeners

@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="160" height="160">
+  <defs>
+    <!-- Gradient for the outer ring -->
+    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#818cf8" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#a78bfa" stop-opacity="0.05"/>
+    </linearGradient>
+    <!-- Glow filter for the icon -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <!-- Pulsing glow behind the icon -->
+    <radialGradient id="pulseGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.3">
+        <animate attributeName="stop-opacity" values="0.15;0.35;0.15" dur="2s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="100%" stop-color="#a78bfa" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Pulsing background glow -->
+  <circle cx="80" cy="80" r="55" fill="url(#pulseGlow)">
+    <animate attributeName="r" values="50;58;50" dur="2s" repeatCount="indefinite" calcMode="spline"
+             keySplines="0.4 0 0.2 1;0.4 0 0.2 1"/>
+  </circle>
+
+  <!-- Spinning arc ring -->
+  <circle cx="80" cy="80" r="52" fill="none" stroke="url(#ringGrad)" stroke-width="3"
+          stroke-linecap="round" stroke-dasharray="120 210">
+    <animateTransform attributeName="transform" type="rotate"
+                      from="0 80 80" to="360 80 80" dur="1.8s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- Secondary counter-rotating dots -->
+  <circle cx="80" cy="80" r="46" fill="none" stroke="#c4b5fd" stroke-width="1.5"
+          stroke-opacity="0.3" stroke-linecap="round" stroke-dasharray="4 50 8 50 4 210">
+    <animateTransform attributeName="transform" type="rotate"
+                      from="360 80 80" to="0 80 80" dur="3s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- GitHub Copilot icon (centered, scaled to fit) -->
+  <g transform="translate(55, 52) scale(1.95)" filter="url(#glow)">
+    <path fill="#e2e0ff" fill-opacity="0.95" d="
+      M12.5 2.2C10.2 1.3 7.8 1.3 5.5 2.2
+      C3.3 3.1 1.8 4.9 1.2 7.1
+      C0.6 9.2 0.8 11.5 1.8 13.3
+      L6.2 21.5C6.6 22.2 7.4 22.6 8.2 22.5
+      L9 22.4L9 22.4C9.6 22.3 10 21.9 10 21.3
+      L10 18.2L8 18.2L8 20.4L7.5 20.5
+      C7.3 20.5 7.2 20.4 7.1 20.3
+      L2.7 12.1C2 10.7 1.8 9.1 2.3 7.5
+      C2.8 5.9 3.9 4.5 5.5 3.8
+      C7.5 2.9 10.5 2.9 12.5 3.8
+      C14.1 4.5 15.2 5.9 15.7 7.5
+      C16.2 9.1 16 10.7 15.3 12.1
+      L10.9 20.3C10.8 20.4 10.7 20.5 10.5 20.5
+      L10 20.4L10 18.2L8 18.2
+      M9 16.2L9 12.8C9 12.3 8.6 11.8 8 11.8
+      L7 11.8C6.4 11.8 6 12.3 6 12.8L6 16.2L9 16.2Z
+      M15 16.2L12 16.2L12 12.8C12 12.3 11.6 11.8 11 11.8
+      L10 11.8C9.4 11.8 9 12.3 9 12.8
+      M9 7.8C9 8.9 8.1 9.8 7 9.8C5.9 9.8 5 8.9 5 7.8
+      C5 6.7 5.9 5.8 7 5.8C8.1 5.8 9 6.7 9 7.8Z
+      M13 7.8C13 8.9 12.1 9.8 11 9.8C9.9 9.8 9 8.9 9 7.8
+      C9 6.7 9.9 5.8 11 5.8C12.1 5.8 13 6.7 13 7.8Z"/>
+  </g>
+
+  <!-- Floating sparkle particles -->
+  <circle cx="38" cy="45" r="1.5" fill="#c4b5fd">
+    <animate attributeName="opacity" values="0;1;0" dur="2.5s" repeatCount="indefinite" begin="0s"/>
+    <animate attributeName="cy" values="48;42;48" dur="2.5s" repeatCount="indefinite" begin="0s"/>
+  </circle>
+  <circle cx="122" cy="55" r="1" fill="#a78bfa">
+    <animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite" begin="0.7s"/>
+    <animate attributeName="cy" values="58;52;58" dur="2s" repeatCount="indefinite" begin="0.7s"/>
+  </circle>
+  <circle cx="52" cy="115" r="1.2" fill="#818cf8">
+    <animate attributeName="opacity" values="0;1;0" dur="2.2s" repeatCount="indefinite" begin="1.2s"/>
+    <animate attributeName="cy" values="118;112;118" dur="2.2s" repeatCount="indefinite" begin="1.2s"/>
+  </circle>
+  <circle cx="112" cy="108" r="1" fill="#c4b5fd">
+    <animate attributeName="opacity" values="0;1;0" dur="1.8s" repeatCount="indefinite" begin="0.4s"/>
+    <animate attributeName="cy" values="111;105;111" dur="1.8s" repeatCount="indefinite" begin="0.4s"/>
+  </circle>
+</svg>
