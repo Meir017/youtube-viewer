@@ -1,5 +1,8 @@
 import { fetchVideoDetails } from '../generator/api';
+import { createLogger } from '../generator/logger.ts';
 import type { WebChannelData } from './channel-processor';
+
+const log = createLogger('enrichment');
 
 // Enrichment settings
 const ENRICH_DELAY_MS = 1500;
@@ -164,7 +167,7 @@ export function startEnrichment(
 
     // Start enrichment in background (don't await)
     runEnrichment(collection, job, saveCallback).catch(err => {
-        console.error(`Enrichment error for collection ${collectionId}:`, err);
+        log.error(`Enrichment error for collection ${collectionId}:`, err);
         job.status = 'error';
         job.error = err.message;
     });
@@ -181,7 +184,7 @@ async function runEnrichment(
     saveCallback: () => Promise<void>
 ): Promise<void> {
     const collectionId = collection.id;
-    console.log(`📝 Starting enrichment for collection ${collectionId} (concurrency: ${ENRICH_CONCURRENCY}, delay: ${ENRICH_DELAY_MS}ms)`);
+    log.info(`Starting enrichment for collection ${collectionId} (concurrency: ${ENRICH_CONCURRENCY}, delay: ${ENRICH_DELAY_MS}ms)`);
 
     // Collect all videos that need enrichment
     const videosToEnrich: Array<{ channelIndex: number; videoIndex: number; videoId: string }> = [];
@@ -198,7 +201,7 @@ async function runEnrichment(
         }
     }
 
-    console.log(`  Found ${videosToEnrich.length} videos to enrich`);
+    log.info(`Found ${videosToEnrich.length} videos to enrich`);
 
     if (videosToEnrich.length === 0) {
         job.status = 'complete';
@@ -247,23 +250,23 @@ async function runEnrichment(
             job.enriched++;
             
             if (job.enriched % 10 === 0 || job.enriched === job.total) {
-                console.log(`  Progress: ${job.enriched}/${job.total} videos enriched (${job.failed} failed)`);
+                log.info(`Progress: ${job.enriched}/${job.total} videos enriched (${job.failed} failed)`);
             }
             
             await maybeSave();
             return true;
         } catch (err: any) {
             if (err.message?.includes('429') || err.message?.includes('Too Many Requests')) {
-                console.warn(`  Rate limited (429) - stopping all workers`);
+                log.warn('Rate limited (429) - stopping all workers');
                 rateLimited = true;
                 job.rateLimited = true;
                 return false;
             }
             job.failed++;
             if (job.failed <= 5) {
-                console.warn(`  Failed to enrich video ${videoId}: ${err.message}`);
+                log.warn(`Failed to enrich video ${videoId}: ${err.message}`);
             } else if (job.failed === 6) {
-                console.warn(`  (suppressing further failure messages)`);
+                log.warn('(suppressing further failure messages)');
             }
             return true; // Continue processing despite individual failures
         }
@@ -291,7 +294,7 @@ async function runEnrichment(
 
     // Start concurrent workers
     const workerCount = Math.min(ENRICH_CONCURRENCY, videosToEnrich.length);
-    console.log(`  Starting ${workerCount} concurrent workers`);
+    log.info(`Starting ${workerCount} concurrent workers`);
     
     const workers: Promise<void>[] = [];
     for (let i = 0; i < workerCount; i++) {
@@ -307,5 +310,5 @@ async function runEnrichment(
     job.completedAt = new Date().toISOString();
     job.status = rateLimited ? 'rate-limited' : 'complete';
     
-    console.log(`✓ Enrichment ${job.status}: ${job.enriched} enriched, ${job.failed} failed${rateLimited ? ' (stopped due to rate limit)' : ''}`);
+    log.info(`Enrichment ${job.status}: ${job.enriched} enriched, ${job.failed} failed${rateLimited ? ' (stopped due to rate limit)' : ''}`);
 }

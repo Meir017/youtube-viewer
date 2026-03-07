@@ -4,6 +4,9 @@ import { getCachedImage, getCachedAvatar, getCacheStats, clearCache } from './im
 import { getEnrichmentStatus, startEnrichment } from './video-enrichment';
 import { getVideoInsights, startVideoInsights, cancelVideoInsights } from './copilot-insights';
 import { createStore, ensureDataDir, type StoreInterface } from './store';
+import { createLogger } from '../generator/logger.ts';
+
+const log = createLogger('server');
 
 // Route handlers
 import * as collectionsRoutes from './routes/collections';
@@ -87,7 +90,7 @@ async function handleApiRequest(
         const response = await handler();
         return withCors(response);
     } catch (e: any) {
-        console.error('API Error:', e);
+        log.error('API Error:', e);
         return withCors(
             Response.json({ error: e.message || 'Internal server error' }, { status: 500 })
         );
@@ -368,4 +371,4 @@ function getContentType(path: string): string {
 }
 
 await ensureDataDir();
-console.log(`🚀 YouTube Viewer running at http://localhost:${server.port}`);
+log.info(`Server running at http://localhost:${server.port}`);

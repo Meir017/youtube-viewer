@@ -1,5 +1,8 @@
 import { join } from 'path';
 import type { Collection, StoredChannel } from './video-enrichment';
+import { createLogger } from '../generator/logger.ts';
+
+const log = createLogger('store');
 
 const DATA_FILE = join(import.meta.dir, 'data', 'channels.json');
 
@@ -40,7 +43,7 @@ export async function loadStore(): Promise<ChannelsStore> {
             return data;
         }
     } catch (e) {
-        console.error('Error loading store:', e);
+        log.error('Error loading store:', e);
     }
     return { collections: [] };
 }

@@ -3,6 +3,9 @@ import { join } from 'path';
 import type { BunFile } from 'bun';
 import type { ImageFetcher, ImageCacheStorage } from './interfaces/image-fetcher';
 import { createImageFetcher, createImageCacheStorage } from './interfaces/image-fetcher';
+import { createLogger } from '../generator/logger.ts';
+
+const log = createLogger('cache');
 
 const CACHE_DIR = join(import.meta.dir, 'cache', 'images');
 
@@ -106,7 +109,7 @@ export async function getCachedImage(
         };
     }
     
-    console.log(`Fetching image: ${youtubeUrl}`);
+    log.info(`Fetching image: ${youtubeUrl}`);
     const result = await fetcher.fetch(youtubeUrl);
     
     if (!result) {
@@ -120,8 +123,8 @@ export async function getCachedImage(
     
     // Save to cache asynchronously (fire and forget for faster response)
     storage.write(cachePath, result.data)
-        .then(() => console.log(`Cached: ${cachePath}`))
-        .catch((e) => console.error(`Cache write error for ${cachePath}:`, e));
+        .then(() => log.debug(`Cached: ${cachePath}`))
+        .catch((e) => log.error(`Cache write error for ${cachePath}:`, e));
     
     return {
         file: result.data instanceof Blob ? result.data : new Blob([result.data]),
@@ -162,7 +165,7 @@ export async function getCachedAvatar(
         };
     }
     
-    console.log(`Fetching avatar: ${avatarUrl}`);
+    log.info(`Fetching avatar: ${avatarUrl}`);
     const result = await fetcher.fetch(avatarUrl);
     
     if (!result) {
@@ -176,8 +179,8 @@ export async function getCachedAvatar(
     
     // Save to cache asynchronously (fire and forget for faster response)
     storage.write(cachePath, result.data)
-        .then(() => console.log(`Cached avatar: ${cachePath}`))
-        .catch((e) => console.error(`Avatar cache write error for ${cachePath}:`, e));
+        .then(() => log.debug(`Cached avatar: ${cachePath}`))
+        .catch((e) => log.error(`Avatar cache write error for ${cachePath}:`, e));
     
     return {
         file: result.data instanceof Blob ? result.data : new Blob([result.data]),

@@ -1,6 +1,9 @@
 import type { StoreInterface } from '../store';
 import type { WebChannelData } from '../channel-processor';
 import type { StoredChannel } from '../video-enrichment';
+import { createLogger } from '../../generator/logger.ts';
+
+const log = createLogger('channel');
 
 export interface ChannelProcessor {
     processChannelForWeb(handle: string, config?: { maxAgeDays?: number }): Promise<WebChannelData>;
@@ -29,11 +32,11 @@ export async function listChannels(
     
     // If maxAgeDays is provided, refresh all channels with the new setting
     if (maxAgeDays !== undefined) {
-        console.log(`Refreshing all channels in collection "${collection.name}" with maxAgeDays=${maxAgeDays}`);
+        log.info(`Refreshing all channels in collection "${collection.name}" with maxAgeDays=${maxAgeDays}`);
         
         for (const channel of collection.channels) {
             try {
-                console.log(`  Refreshing: ${channel.handle}`);
+                log.info(`Refreshing: ${channel.handle}`);
                 
                 // Preserve existing enrichment data before refresh
                 const existingEnrichment = preserveEnrichmentData(channel);
@@ -46,7 +49,7 @@ export async function listChannels(
                 channel.data = channelData;
                 channel.lastUpdated = new Date().toISOString();
             } catch (e) {
-                console.error(`  Failed to refresh ${channel.handle}:`, e);
+                log.error(`Failed to refresh ${channel.handle}:`, e);
             }
         }
         
@@ -88,7 +91,7 @@ export async function addChannel(
     }
 
     // Fetch channel data
-    console.log(`Fetching data for channel: ${handle}`);
+    log.info(`Fetching data for channel: ${handle}`);
     const channelData = await deps.channelProcessor.processChannelForWeb(handle);
 
     const newChannel: StoredChannel = {
@@ -153,7 +156,7 @@ export async function refreshChannel(
         return Response.json({ error: 'Channel not found' }, { status: 404 });
     }
 
-    console.log(`Refreshing data for channel: ${channel.handle}`);
+    log.info(`Refreshing data for channel: ${channel.handle}`);
     
     // Preserve existing enrichment data before refresh
     const existingEnrichment = preserveEnrichmentData(channel);
@@ -206,7 +209,7 @@ function restoreEnrichmentData(
             }
         }
         if (restoredCount > 0) {
-            console.log(`    Preserved enrichment data for ${restoredCount} videos`);
+            log.info(`Preserved enrichment data for ${restoredCount} videos`);
         }
     }
 }

@@ -1,5 +1,6 @@
 import { CopilotClient, approveAll, type SessionEvent } from "@github/copilot-sdk";
-import { log } from "../generator/logger.ts";
+import { createLogger } from "../generator/logger.ts";
+const log = createLogger('insights');
 
 export interface VideoMeta {
     title?: string;
@@ -147,14 +148,14 @@ function logSessionEvent(videoId: string, event: SessionEvent): void {
             log.info(`${tag} Agent turn ${event.data.turnId} ended`);
             break;
         case "assistant.intent":
-            log.parse(`${tag} Intent: ${event.data.intent}`);
+            log.info(`${tag} Intent: ${event.data.intent}`);
             break;
         case "tool.execution_start":
-            log.fetch(`${tag} Tool started: ${event.data.toolName}`);
+            log.info(`${tag} Tool started: ${event.data.toolName}`);
             break;
         case "tool.execution_complete":
             if (event.data.success) {
-                log.success(`${tag} Tool completed: ${(event.data as any).toolName ?? event.data.toolCallId}`);
+                log.info(`${tag} Tool completed: ${(event.data as any).toolName ?? event.data.toolCallId}`);
             } else {
                 log.warn(`${tag} Tool failed: ${(event.data as any).toolName ?? event.data.toolCallId}`);
             }
@@ -163,13 +164,13 @@ function logSessionEvent(videoId: string, event: SessionEvent): void {
             log.info(`${tag} Sub-agent started: ${event.data.agentName}`);
             break;
         case "subagent.completed":
-            log.success(`${tag} Sub-agent completed: ${event.data.agentName}`);
+            log.info(`${tag} Sub-agent completed: ${event.data.agentName}`);
             break;
         case "subagent.failed":
             log.error(`${tag} Sub-agent failed: ${(event.data as any).agentName}`);
             break;
         case "assistant.usage":
-            log.detail(`${tag} Token usage`, `model=${event.data.model} in=${event.data.inputTokens ?? '?'} out=${event.data.outputTokens ?? '?'}`);
+            log.info(`${tag} Token usage: model=${event.data.model} in=${event.data.inputTokens ?? '?'} out=${event.data.outputTokens ?? '?'}`);
             break;
         case "session.idle":
             log.info(`${tag} Session idle`);
@@ -189,12 +190,12 @@ function logSessionEvent(videoId: string, event: SessionEvent): void {
 async function runResearch(videoId: string, meta: VideoMeta, insights: VideoInsights): Promise<void> {
     const tag = `[insights:${videoId}]`;
     const startTime = Date.now();
-    log.header(`AI Insights: ${meta.title || videoId}`);
+    log.info(`AI Insights: ${meta.title || videoId}`);
     log.info(`${tag} Starting research for video: ${videoId}`);
 
     log.info(`${tag} Initializing Copilot client...`);
     const client = await getClient();
-    log.success(`${tag} Copilot client ready`);
+    log.info(`${tag} Copilot client ready`);
 
     log.info(`${tag} Creating session (model: claude-sonnet-4.6)...`);
     const session = await client.createSession({
@@ -223,7 +224,7 @@ When researching a movie or TV trailer, finding the IMDB link is your TOP PRIORI
         },
         infiniteSessions: { enabled: false }
     });
-    log.success(`${tag} Session created (id: ${session.sessionId})`);
+    log.info(`${tag} Session created (id: ${session.sessionId})`);
 
     // Subscribe to all session events for progress logging
     const unsubscribeEvents = session.on((event: SessionEvent) => {
@@ -255,7 +256,7 @@ When researching a movie or TV trailer, finding the IMDB link is your TOP PRIORI
             insights.content = result.data.content;
             insights.status = 'complete';
             insights.generatedAt = new Date().toISOString();
-            log.success(`${tag} Research complete in ${elapsed}s (${result.data.content.length} chars)`);
+            log.info(`${tag} Research complete in ${elapsed}s (${result.data.content.length} chars)`);
         } else {
             insights.status = 'error';
             insights.error = 'No response from Copilot';
@@ -291,7 +292,7 @@ export async function cancelVideoInsights(videoId: string): Promise<boolean> {
     try {
         log.info(`[insights:${videoId}] Cancelling research session...`);
         await active.abort();
-        log.success(`[insights:${videoId}] Research session cancelled`);
+        log.info(`[insights:${videoId}] Research session cancelled`);
     } catch (err: any) {
         log.warn(`[insights:${videoId}] Error during cancellation: ${err.message}`);
     }

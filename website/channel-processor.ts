@@ -10,6 +10,9 @@ import {
 import { isVideoTooOld, isVideoTooShort, extractVideoFromRenderer } from '../generator/utils';
 import type { ChannelDetails, Video, VideosTabResult } from '../generator/types';
 import type { YouTubeApi } from './interfaces/youtube-api';
+import { createLogger } from '../generator/logger.ts';
+
+const log = createLogger('channel');
 
 // Shared config for web
 const browseApiUrl = 'https://www.youtube.com/youtubei/v1/browse?prettyPrint=false';
@@ -90,7 +93,7 @@ export async function processChannelForWeb(
     };
     const { channelIdentifier, channelUrl, channelStreamsUrl, channelAboutUrl } = getChannelUrls(channelInput);
     
-    console.log(`📺 Processing channel: ${channelIdentifier} (maxAge=${maxAgeDays} days, limit=${videoLimit} videos)`);
+    log.info(`Processing channel: ${channelIdentifier} (maxAge=${maxAgeDays} days, limit=${videoLimit} videos)`);
     
     // Fetch about page for channel details
     const aboutHtml = await fetchChannelPage(channelAboutUrl);
@@ -98,7 +101,7 @@ export async function processChannelForWeb(
     const channel = extractChannelDetails(aboutData);
     
     if (channel.aboutContinuationToken) {
-        console.log('  Fetching extended channel details...');
+        log.info('Fetching extended channel details...');
         const extendedData = await fetchBrowseData(channel.aboutContinuationToken, channelAboutUrl);
         const extended = extractAboutDetails(extendedData);
         
@@ -110,7 +113,7 @@ export async function processChannelForWeb(
         }
     }
     
-    console.log(`  Channel: ${channel.title}`);
+    log.info(`Channel: ${channel.title}`);
     
     // Fetch videos
     const html = await fetchChannelPage(channelUrl);
@@ -154,7 +157,7 @@ export async function processChannelForWeb(
     
     // Paginate to get more videos up to the limit
     while (currentToken && allVideos.length < cfg.videoLimit && !reachedAgeLimit) {
-        console.log(`  Loading more videos, have: ${allVideos.length}/${cfg.videoLimit}`);
+        log.debug(`Loading more videos, have: ${allVideos.length}/${cfg.videoLimit}`);
         
         const browseData = await fetchBrowseData(currentToken, channelUrl);
         const { videos: moreVideos, nextContinuationToken } = extractVideosFromBrowseResponse(browseData);
@@ -174,7 +177,7 @@ export async function processChannelForWeb(
         currentToken = nextContinuationToken;
     }
     
-    console.log(`  ✓ Found ${allVideos.length} videos`);
+    log.info(`Found ${allVideos.length} videos`);
     
     return {
         channel,

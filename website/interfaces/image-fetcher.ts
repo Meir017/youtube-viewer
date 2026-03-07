@@ -2,6 +2,9 @@
 // Allows mocking in tests without making real network calls or file system access
 
 import type { BunFile } from 'bun';
+import { createLogger } from '../../generator/logger.ts';
+
+const log = createLogger('image');
 
 export interface FetchedImage {
     data: Blob | ArrayBuffer;
@@ -64,7 +67,7 @@ export function createImageFetcher(): ImageFetcher {
                 });
                 
                 if (!response.ok) {
-                    console.error(`Image fetch failed: ${response.status} for ${url}`);
+                    log.error(`Image fetch failed: ${response.status} for ${url}`);
                     return null;
                 }
                 
@@ -73,7 +76,7 @@ export function createImageFetcher(): ImageFetcher {
                 
                 return { data, contentType };
             } catch (e: any) {
-                console.error(`Image fetch error for ${url}:`, e.message);
+                log.error(`Image fetch error for ${url}:`, e.message);
                 return null;
             }
         },
