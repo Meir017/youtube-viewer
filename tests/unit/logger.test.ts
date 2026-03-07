@@ -33,13 +33,15 @@ describe('createLogger', () => {
         expect(typeof log.error).toBe('function');
     });
 
-    test('info messages include category in output', () => {
+    test('info messages include category and timestamp in output', () => {
         const log = createLogger('channel');
         log.info('Processing @GitHub');
         expect(logSpy).toHaveBeenCalledTimes(1);
         const output = logSpy.mock.calls[0][0] as string;
         expect(output).toContain('[channel]');
         expect(output).toContain('Processing @GitHub');
+        // ISO 8601 timestamp pattern
+        expect(output).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
     });
 
     test('uses correct emoji for known categories', () => {

@@ -95,7 +95,8 @@ export function createLogger(category: string): Logger {
         if (!shouldLog(level)) return;
         const color = LEVEL_COLORS[level];
         const label = LEVEL_LABELS[level];
-        const prefix = `${emoji} ${color}${label}${colors.reset} ${colors.dim}[${category}]${colors.reset}`;
+        const timestamp = `${colors.dim}${new Date().toISOString()}${colors.reset}`;
+        const prefix = `${timestamp} ${emoji} ${color}${label}${colors.reset} ${colors.dim}[${category}]${colors.reset}`;
         const consoleFn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
         if (args.length > 0) {
             consoleFn(`${prefix} ${msg}`, ...args);
