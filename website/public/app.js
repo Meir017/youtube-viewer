@@ -1717,43 +1717,14 @@ async function pollInsights(videoId) {
 }
 
 function renderInsightsContent(markdown) {
-    // Simple markdown to HTML conversion
-    const html = simpleMarkdownToHtml(markdown);
+    const html = renderMarkdown(markdown);
     insightsContent.innerHTML = html;
     insightsContent.classList.add('insights-loaded');
 }
 
-function simpleMarkdownToHtml(md) {
+function renderMarkdown(md) {
     if (!md) return '';
-    let html = md
-        // Escape HTML entities first
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        // Headers
-        .replace(/^### (.+)$/gm, '<h4>$1</h4>')
-        .replace(/^## (.+)$/gm, '<h3>$1</h3>')
-        .replace(/^# (.+)$/gm, '<h2>$1</h2>')
-        // Bold and italic
-        .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        // Links
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-        // Unordered lists
-        .replace(/^[\-\*] (.+)$/gm, '<li>$1</li>')
-        // Horizontal rules
-        .replace(/^---$/gm, '<hr>')
-        // Paragraphs (double newlines)
-        .replace(/\n\n/g, '</p><p>')
-        // Single newlines within paragraphs
-        .replace(/\n/g, '<br>');
-
-    // Wrap consecutive <li> elements in <ul>
-    html = html.replace(/(<li>.*?<\/li>)(?:<br>)?/g, '$1');
-    html = html.replace(/((?:<li>.*?<\/li>)+)/g, '<ul>$1</ul>');
-
-    return `<p>${html}</p>`;
+    return marked.parse(md);
 }
 
 // Video modal event listeners
