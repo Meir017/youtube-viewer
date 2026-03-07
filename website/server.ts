@@ -2,12 +2,14 @@ import { join } from 'path';
 import { processChannelForWeb } from './channel-processor';
 import { getCachedImage, getCachedAvatar, getCacheStats, clearCache } from './image-cache';
 import { getEnrichmentStatus, startEnrichment } from './video-enrichment';
+import { getVideoInsights, startVideoInsights, cancelVideoInsights } from './copilot-insights';
 import { createStore, ensureDataDir, type StoreInterface } from './store';
 
 // Route handlers
 import * as collectionsRoutes from './routes/collections';
 import * as channelsRoutes from './routes/channels';
 import * as enrichmentRoutes from './routes/enrichment';
+import * as insightsRoutes from './routes/insights';
 import * as hiddenRoutes from './routes/hidden';
 import * as starredRoutes from './routes/starred';
 import * as cacheRoutes from './routes/cache';
@@ -37,6 +39,12 @@ const imageCacheService: cacheRoutes.ImageCacheService = {
     clearCache,
 };
 
+const insightsService: insightsRoutes.InsightsService = {
+    getVideoInsights,
+    startVideoInsights,
+    cancelVideoInsights,
+};
+
 // Create handler dependencies
 const collectionsDeps: collectionsRoutes.CollectionsHandlerDeps = { store };
 const channelsDeps: channelsRoutes.ChannelsHandlerDeps = { store, channelProcessor };
@@ -45,6 +53,7 @@ const hiddenDeps: hiddenRoutes.HiddenHandlerDeps = { store };
 const starredDeps: starredRoutes.StarredHandlerDeps = { store };
 const cacheDeps: cacheRoutes.CacheHandlerDeps = { imageCache: imageCacheService };
 const imagesDeps: imagesRoutes.ImagesHandlerDeps = { imageService };
+const insightsDeps: insightsRoutes.InsightsHandlerDeps = { insightsService };
 
 // CORS headers for API responses
 const corsHeaders = {
@@ -255,6 +264,36 @@ const server = Bun.serve({
                     const collectionId = unstarVideoMatch[1];
                     const videoId = unstarVideoMatch[2];
                     return starredRoutes.unstarVideo(starredDeps, collectionId, videoId);
+                });
+            }
+
+            // ==================== VIDEO INSIGHTS API ====================
+
+            // POST /api/videos/:videoId/insights - Start or retrieve AI insights
+            const startInsightsMatch = path.match(/^\/api\/videos\/([^/]+)\/insights$/);
+            if (startInsightsMatch && req.method === 'POST') {
+                return handleApiRequest(async () => {
+                    const videoId = startInsightsMatch[1];
+                    const body = await req.json();
+                    return insightsRoutes.startInsightsHandler(insightsDeps, videoId, body);
+                });
+            }
+
+            // GET /api/videos/:videoId/insights - Poll for insights results
+            const getInsightsMatch = path.match(/^\/api\/videos\/([^/]+)\/insights$/);
+            if (getInsightsMatch && req.method === 'GET') {
+                return handleApiRequest(() => {
+                    const videoId = getInsightsMatch[1];
+                    return insightsRoutes.getInsightsHandler(insightsDeps, videoId);
+                });
+            }
+
+            // DELETE /api/videos/:videoId/insights - Cancel ongoing research
+            const cancelInsightsMatch = path.match(/^\/api\/videos\/([^/]+)\/insights$/);
+            if (cancelInsightsMatch && req.method === 'DELETE') {
+                return handleApiRequest(() => {
+                    const videoId = cancelInsightsMatch[1];
+                    return insightsRoutes.cancelInsightsHandler(insightsDeps, videoId);
                 });
             }
 

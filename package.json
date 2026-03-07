@@ -32,5 +32,8 @@
     "@playwright/test": "^1.58.1",
     "@types/bun": "latest",
     "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@github/copilot-sdk": "^0.1.30"
   }
 }
