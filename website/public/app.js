@@ -28,7 +28,7 @@ let isLoading = false;
 let activeChannel = 'all';
 let searchQuery = '';
 let searchQueryShorts = '';
-let currentSort = { by: 'default', order: 'desc' };
+let currentSort = { by: 'date', order: 'asc' };
 let currentMaxAge = 30;
 let minDurationMinutes = 0;
 let maxDurationMinutes = Infinity;
@@ -1281,7 +1281,23 @@ function renderVideos() {
     const filtered = filterVideos(allVideos);
     const sorted = sortVideos(filtered);
     
-    videoCountEl.textContent = sorted.length;
+    // Show x/y count when text or duration filters are active
+    const isFiltering = searchQuery !== '' || minDurationMinutes > 0 || maxDurationMinutes !== Infinity;
+    let countText;
+    if (isFiltering) {
+        const total = allVideos.filter(video => {
+            const matchesChannel = activeChannel === 'all' || video.channelIndex === parseInt(activeChannel);
+            const isHidden = hiddenVideoIds.has(video.videoId);
+            const matchesHiddenFilter = showHiddenVideos ? isHidden : !isHidden;
+            const isStarred = starredVideoIds.has(video.videoId);
+            const matchesStarredFilter = showStarredVideos ? isStarred : true;
+            return matchesChannel && !video.isShort && matchesHiddenFilter && matchesStarredFilter;
+        }).length;
+        countText = `${sorted.length}/${total}`;
+    } else {
+        countText = `${sorted.length}`;
+    }
+    videoCountEl.textContent = countText;
     
     // Update section title based on view
     const sectionTitle = document.querySelector('#videosSection .section-title');
@@ -1290,7 +1306,7 @@ function renderVideos() {
         const text = showStarredVideos ? 'Starred Videos' : showHiddenVideos ? 'Hidden Videos' : 'Videos';
         sectionTitle.innerHTML = `
             ${emoji} ${text}
-            <span class="section-count">${sorted.length}</span>
+            <span class="section-count">${countText}</span>
         `;
     }
     
@@ -1395,7 +1411,17 @@ function renderViewToggleTabs() {
 function renderShorts() {
     const filtered = filterShorts(allShorts);
     
-    shortsCountEl.textContent = filtered.length;
+    // Show x/y count when text filter is active
+    const isFiltering = searchQueryShorts !== '';
+    if (isFiltering) {
+        const total = allShorts.filter(short => {
+            const matchesChannel = activeChannel === 'all' || short.channelIndex === parseInt(activeChannel);
+            return matchesChannel;
+        }).length;
+        shortsCountEl.textContent = `${filtered.length}/${total}`;
+    } else {
+        shortsCountEl.textContent = filtered.length;
+    }
     
     if (filtered.length === 0) {
         // Destroy existing virtual scroll

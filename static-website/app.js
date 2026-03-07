@@ -27,7 +27,7 @@ let isLoading = false;
 let activeChannel = 'all';
 let searchQuery = '';
 let searchQueryShorts = '';
-let currentSort = { by: 'default', order: 'desc' };
+let currentSort = { by: 'date', order: 'asc' };
 let currentMaxAge = 30;
 let minDurationMinutes = 0;
 let maxDurationMinutes = Infinity;
@@ -530,7 +530,17 @@ function renderVideos() {
     const filtered = filterVideos(allVideos);
     const sorted = sortVideos(filtered);
     
-    videoCountEl.textContent = sorted.length;
+    // Show x/y count when text or duration filters are active
+    const isFiltering = searchQuery !== '' || minDurationMinutes > 0 || maxDurationMinutes !== Infinity;
+    if (isFiltering) {
+        const total = allVideos.filter(video => {
+            const matchesChannel = activeChannel === 'all' || video.channelIndex === parseInt(activeChannel);
+            return matchesChannel && !video.isShort;
+        }).length;
+        videoCountEl.textContent = `${sorted.length}/${total}`;
+    } else {
+        videoCountEl.textContent = sorted.length;
+    }
     
     if (sorted.length === 0) {
         // Destroy existing virtual scroll
@@ -572,7 +582,17 @@ function renderVideos() {
 function renderShorts() {
     const filtered = filterShorts(allShorts);
     
-    shortsCountEl.textContent = filtered.length;
+    // Show x/y count when text filter is active
+    const isFiltering = searchQueryShorts !== '';
+    if (isFiltering) {
+        const total = allShorts.filter(short => {
+            const matchesChannel = activeChannel === 'all' || short.channelIndex === parseInt(activeChannel);
+            return matchesChannel;
+        }).length;
+        shortsCountEl.textContent = `${filtered.length}/${total}`;
+    } else {
+        shortsCountEl.textContent = filtered.length;
+    }
     
     if (filtered.length === 0) {
         // Destroy existing virtual scroll
