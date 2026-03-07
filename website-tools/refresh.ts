@@ -341,8 +341,7 @@ async function runRefresh(): Promise<void> {
     let failed = 0;
     const startTime = Date.now();
 
-    for (let i = 0; i < channelsToRefresh.length; i++) {
-        const ref = channelsToRefresh[i];
+    await Promise.all(channelsToRefresh.map(async (ref) => {
         const channel = data.collections[ref.collectionIndex].channels[ref.channelIndex];
         const existingVideos = channel.data?.videos ?? [];
 
@@ -391,7 +390,7 @@ async function runRefresh(): Promise<void> {
                 console.log(`      ${colors.red}└─ ${err.message}${colors.reset}`);
             }
         }
-    }
+    }));
 
     await store.save(data);
 

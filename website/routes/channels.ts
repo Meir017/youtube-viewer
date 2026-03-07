@@ -30,11 +30,11 @@ export async function listChannels(
         return Response.json({ error: 'Collection not found' }, { status: 404 });
     }
     
-    // If maxAgeDays is provided, refresh all channels with the new setting
+    // If maxAgeDays is provided, refresh all channels concurrently with the new setting
     if (maxAgeDays !== undefined) {
         log.info(`Refreshing all channels in collection "${collection.name}" with maxAgeDays=${maxAgeDays}`);
         
-        for (const channel of collection.channels) {
+        await Promise.all(collection.channels.map(async (channel) => {
             try {
                 log.info(`Refreshing: ${channel.handle}`);
                 
@@ -51,7 +51,7 @@ export async function listChannels(
             } catch (e) {
                 log.error(`Failed to refresh ${channel.handle}:`, e);
             }
-        }
+        }));
         
         await deps.store.save(store);
     }
