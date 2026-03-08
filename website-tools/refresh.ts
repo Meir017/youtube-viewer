@@ -185,6 +185,38 @@ function mergeVideos(existing: Video[], fresh: Video[]): Video[] {
     return merged;
 }
 
+// Parse view count string (e.g. "1,234 views", "1.2K views", "1.2M views") to a number
+function parseViewCount(viewCount?: string): number {
+    if (!viewCount) return 0;
+    const str = viewCount.toLowerCase().replace(/,/g, '').replace(/\s*views?\s*/i, '').trim();
+    if (!str || str === 'no') return 0;
+    const match = str.match(/^([\d.]+)\s*([kmb])?$/);
+    if (!match) return 0;
+    const num = parseFloat(match[1]);
+    const suffix = match[2];
+    switch (suffix) {
+        case 'k': return Math.round(num * 1_000);
+        case 'm': return Math.round(num * 1_000_000);
+        case 'b': return Math.round(num * 1_000_000_000);
+        default: return Math.round(num);
+    }
+}
+
+// Format a number with commas
+function formatNumber(n: number): string {
+    return n.toLocaleString('en-US');
+}
+
+// Per-channel refresh result for the log
+interface ChannelRefreshResult {
+    handle: string;
+    collectionName: string;
+    failed: boolean;
+    error?: string;
+    newVideos: Video[];
+    viewChanges: { title: string; videoId: string; oldViews: number; newViews: number }[];
+}
+
 // Channel reference for tracking
 interface ChannelRef {
     collectionIndex: number;
@@ -340,15 +372,51 @@ async function runRefresh(): Promise<void> {
     let refreshed = 0;
     let failed = 0;
     const startTime = Date.now();
+    const refreshResults: ChannelRefreshResult[] = [];
 
     await Promise.all(channelsToRefresh.map(async (ref) => {
         const channel = data.collections[ref.collectionIndex].channels[ref.channelIndex];
         const existingVideos = channel.data?.videos ?? [];
 
+        // Snapshot existing view counts for comparison
+        const existingViewMap = new Map<string, number>();
+        for (const video of existingVideos) {
+            existingViewMap.set(video.videoId, parseViewCount(video.viewCount));
+        }
+        const existingIds = new Set(existingVideos.map(v => v.videoId));
+
         try {
             const freshData = await processChannelForWeb(channel.handle, { maxAgeDays: ref.maxAgeDays });
             const mergedVideos = mergeVideos(existingVideos, freshData.videos);
             const newCount = mergedVideos.length - existingVideos.length;
+
+            // Collect new videos (in fresh data but not in existing)
+            const newVideos = freshData.videos.filter(v => !existingIds.has(v.videoId));
+
+            // Collect view count changes for existing videos
+            const viewChanges: ChannelRefreshResult['viewChanges'] = [];
+            for (const video of freshData.videos) {
+                if (existingIds.has(video.videoId)) {
+                    const oldViews = existingViewMap.get(video.videoId) ?? 0;
+                    const newViews = parseViewCount(video.viewCount);
+                    if (newViews !== oldViews) {
+                        viewChanges.push({
+                            title: video.title ?? video.videoId,
+                            videoId: video.videoId,
+                            oldViews,
+                            newViews,
+                        });
+                    }
+                }
+            }
+
+            refreshResults.push({
+                handle: ref.handle,
+                collectionName: ref.collectionName,
+                failed: false,
+                newVideos,
+                viewChanges,
+            });
 
             channel.data = {
                 channel: freshData.channel,
@@ -376,6 +444,15 @@ async function runRefresh(): Promise<void> {
             console.log(`${colors.green}✓${colors.reset} ${bar} ${pctStr} ${countStr} ${channelStr} ${detailStr} ${etaStr}`);
         } catch (err: any) {
             failed++;
+
+            refreshResults.push({
+                handle: ref.handle,
+                collectionName: ref.collectionName,
+                failed: true,
+                error: err.message,
+                newVideos: [],
+                viewChanges: [],
+            });
 
             const completed = refreshed + failed;
             const total = channelsToRefresh.length;
@@ -410,6 +487,102 @@ async function runRefresh(): Promise<void> {
         console.log(`   ${colors.dim}   Avg:      ${formatDuration(avgTime)}/channel${colors.reset}`);
     }
     console.log(`${colors.bold}════════════════════════════════════════════════════════${colors.reset}`);
+
+    // Generate refresh-log.md
+    await writeRefreshLog(refreshResults, { refreshed, failed, totalTime });
+}
+
+// Generate and write refresh-log.md
+async function writeRefreshLog(
+    results: ChannelRefreshResult[],
+    summary: { refreshed: number; failed: number; totalTime: number }
+): Promise<void> {
+    const now = new Date();
+    const dateStr = now.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
+
+    const totalNewVideos = results.reduce((sum, r) => sum + r.newVideos.length, 0);
+    const totalViewChanges = results.reduce((sum, r) => sum + r.viewChanges.length, 0);
+
+    const lines: string[] = [];
+    lines.push(`# Refresh Log — ${dateStr}`);
+    lines.push('');
+    lines.push('## Summary');
+    lines.push('');
+    lines.push(`| Metric | Value |`);
+    lines.push(`| ------ | ----- |`);
+    lines.push(`| Channels refreshed | ${summary.refreshed} |`);
+    if (summary.failed > 0) {
+        lines.push(`| Failed | ${summary.failed} |`);
+    }
+    lines.push(`| New videos | ${totalNewVideos} |`);
+    lines.push(`| View count changes | ${totalViewChanges} |`);
+    lines.push(`| Duration | ${formatDuration(summary.totalTime)} |`);
+    lines.push('');
+
+    // Group results by collection
+    const byCollection = new Map<string, ChannelRefreshResult[]>();
+    for (const r of results) {
+        const list = byCollection.get(r.collectionName) ?? [];
+        list.push(r);
+        byCollection.set(r.collectionName, list);
+    }
+
+    for (const [collectionName, channelResults] of byCollection) {
+        lines.push(`## ${collectionName}`);
+        lines.push('');
+
+        for (const result of channelResults) {
+            if (result.failed) {
+                lines.push(`### ❌ ${result.handle}`);
+                lines.push('');
+                lines.push(`> Error: ${result.error}`);
+                lines.push('');
+                continue;
+            }
+
+            const hasChanges = result.newVideos.length > 0 || result.viewChanges.length > 0;
+            if (!hasChanges) {
+                lines.push(`### ✅ ${result.handle} — no changes`);
+                lines.push('');
+                continue;
+            }
+
+            lines.push(`### ✅ ${result.handle}`);
+            lines.push('');
+
+            if (result.newVideos.length > 0) {
+                lines.push(`**New videos (${result.newVideos.length}):**`);
+                lines.push('');
+                for (const video of result.newVideos) {
+                    const title = video.title ?? video.videoId;
+                    const views = video.viewCount ?? 'N/A';
+                    const published = video.publishedTime ?? '';
+                    lines.push(`- [${title}](https://youtube.com/watch?v=${video.videoId}) — ${views}${published ? `, ${published}` : ''}`);
+                }
+                lines.push('');
+            }
+
+            if (result.viewChanges.length > 0) {
+                // Sort by largest absolute change first
+                const sorted = [...result.viewChanges].sort((a, b) => Math.abs(b.newViews - b.oldViews) - Math.abs(a.newViews - a.oldViews));
+                lines.push(`**View count changes (${sorted.length}):**`);
+                lines.push('');
+                lines.push(`| Video | Previous | Current | Change |`);
+                lines.push(`| ----- | -------: | ------: | -----: |`);
+                for (const vc of sorted) {
+                    const diff = vc.newViews - vc.oldViews;
+                    const sign = diff >= 0 ? '+' : '';
+                    lines.push(`| [${truncate(vc.title, 50)}](https://youtube.com/watch?v=${vc.videoId}) | ${formatNumber(vc.oldViews)} | ${formatNumber(vc.newViews)} | ${sign}${formatNumber(diff)} |`);
+                }
+                lines.push('');
+            }
+        }
+    }
+
+    const logPath = 'refresh-log.md';
+    await Bun.write(logPath, lines.join('\n'));
+    console.log();
+    console.log(`${colors.dim}📝 Log written to ${logPath}${colors.reset}`);
 }
 
 // Run

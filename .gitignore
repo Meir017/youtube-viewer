@@ -151,3 +151,6 @@ vite.config.ts.timestamp-*
 
 # Playwright test results
 test-results/
+
+# Refresh tool log output
+refresh-log.md
