@@ -14,7 +14,6 @@ export async function fetchChannelPage(url: string): Promise<string> {
 }
 
 export async function fetchBrowseData(continuation: string, channelUrl: string): Promise<any> {
-    log.fetch(`Fetching more data via Browse API...`);
     
     const payload = {
         context: {
@@ -47,7 +46,6 @@ export async function fetchBrowseData(continuation: string, channelUrl: string):
     }
 
     const data = await response.json();
-    log.success(`Browse API response received`);
     return data;
 }
 

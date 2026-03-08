@@ -101,7 +101,7 @@ export async function processChannelForWeb(
     const channel = extractChannelDetails(aboutData);
     
     if (channel.aboutContinuationToken) {
-        log.info('Fetching extended channel details...');
+        log.info(`[${channelIdentifier}] Fetching extended channel details...`);
         const extendedData = await fetchBrowseData(channel.aboutContinuationToken, channelAboutUrl);
         const extended = extractAboutDetails(extendedData);
         
@@ -157,7 +157,7 @@ export async function processChannelForWeb(
     
     // Paginate to get more videos up to the limit
     while (currentToken && allVideos.length < cfg.videoLimit && !reachedAgeLimit) {
-        log.debug(`Loading more videos, have: ${allVideos.length}/${cfg.videoLimit}`);
+        log.debug(`[${channelIdentifier}] Fetching more videos (${allVideos.length}/${cfg.videoLimit})...`);
         
         const browseData = await fetchBrowseData(currentToken, channelUrl);
         const { videos: moreVideos, nextContinuationToken } = extractVideosFromBrowseResponse(browseData);
@@ -177,7 +177,7 @@ export async function processChannelForWeb(
         currentToken = nextContinuationToken;
     }
     
-    log.info(`Found ${allVideos.length} videos`);
+    log.info(`[${channelIdentifier}] Found ${allVideos.length} videos`);
     
     return {
         channel,
