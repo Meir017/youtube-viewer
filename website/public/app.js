@@ -1694,7 +1694,7 @@ const closeVideoModalBtn = document.getElementById('closeVideoModal');
 
 // Insights state
 let insightsTimer = null;
-let insightsPollInterval = null;
+let insightsAbortController = null;
 let currentModalVideoId = null;
 
 // Open video modal by ID (looks up data from registry)
@@ -1800,9 +1800,9 @@ function clearInsightsTimers() {
         clearTimeout(insightsTimer);
         insightsTimer = null;
     }
-    if (insightsPollInterval) {
-        clearInterval(insightsPollInterval);
-        insightsPollInterval = null;
+    if (insightsAbortController) {
+        insightsAbortController.abort();
+        insightsAbortController = null;
     }
 }
 
@@ -1814,54 +1814,98 @@ async function triggerInsightsResearch(videoId, meta) {
         void videoModalInsights.offsetWidth; // force reflow
         videoModalInsights.classList.add('fade-in');
 
-        const response = await fetch(`${API_BASE}/videos/${videoId}/insights`, {
+        // Create abort controller for cancellation
+        const abortController = new AbortController();
+        insightsAbortController = abortController;
+
+        const response = await fetch(`${API_BASE}/videos/${videoId}/insights/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(meta),
+            signal: abortController.signal,
         });
-        const data = await response.json();
 
-        if (data.status === 'complete') {
-            renderInsightsContent(data.content);
-            return;
-        }
-
-        if (data.status === 'error') {
+        if (!response.ok || !response.body) {
             videoModalInsights.hidden = true;
             return;
         }
 
-        // Start polling for results
-        insightsPollInterval = setInterval(() => pollInsights(videoId), 2000);
+        // Read SSE stream
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            let eventType = '';
+            let eventData = '';
+
+            for (const line of lines) {
+                if (line.startsWith('event: ')) {
+                    eventType = line.slice(7);
+                } else if (line.startsWith('data: ')) {
+                    eventData = line.slice(6);
+                } else if (line === '' && eventType && eventData) {
+                    // Process the complete SSE message
+                    if (currentModalVideoId !== videoId) return;
+                    handleInsightsEvent(eventType, JSON.parse(eventData));
+                    eventType = '';
+                    eventData = '';
+                }
+            }
+        }
     } catch (err) {
-        console.error('Failed to trigger insights:', err);
+        if (err.name === 'AbortError') return;
+        console.error('Failed to stream insights:', err);
         videoModalInsights.hidden = true;
     }
 }
 
-async function pollInsights(videoId) {
-    // Stop polling if modal was closed or video changed
-    if (currentModalVideoId !== videoId) {
-        clearInsightsTimers();
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_BASE}/videos/${videoId}/insights`);
-        const data = await response.json();
-
-        if (data.status === 'complete') {
-            clearInterval(insightsPollInterval);
-            insightsPollInterval = null;
+function handleInsightsEvent(eventType, data) {
+    switch (eventType) {
+        case 'progress':
+            renderInsightsProgress(data);
+            break;
+        case 'complete':
             renderInsightsContent(data.content);
-        } else if (data.status === 'error') {
-            clearInterval(insightsPollInterval);
-            insightsPollInterval = null;
+            break;
+        case 'error':
             videoModalInsights.hidden = true;
-        }
-    } catch (err) {
-        console.error('Failed to poll insights:', err);
+            break;
     }
+}
+
+function renderInsightsProgress(data) {
+    const loadingSvg = insightsContent.querySelector('.insights-loading-svg');
+    const loadingText = insightsContent.querySelector('.insights-loading-text');
+    if (!loadingText) return;
+
+    // Update the loading text with the progress message
+    const icon = data.type === 'tool_start' ? '🔍' :
+                 data.type === 'tool_complete' ? '✅' :
+                 data.type === 'subagent_start' ? '🤖' :
+                 data.type === 'subagent_complete' ? '✅' :
+                 data.type === 'intent' ? '💭' : '⏳';
+    loadingText.textContent = `${icon} ${data.message}`;
+
+    // Add progress entry to the log
+    let progressLog = insightsContent.querySelector('.insights-progress-log');
+    if (!progressLog) {
+        progressLog = document.createElement('div');
+        progressLog.className = 'insights-progress-log';
+        insightsContent.appendChild(progressLog);
+    }
+    const entry = document.createElement('div');
+    entry.className = 'insights-progress-entry';
+    entry.textContent = `${icon} ${data.message}`;
+    progressLog.appendChild(entry);
+    progressLog.scrollTop = progressLog.scrollHeight;
 }
 
 function renderInsightsContent(markdown) {

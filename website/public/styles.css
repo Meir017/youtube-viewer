@@ -1467,6 +1467,35 @@ body {
     color: rgba(255, 255, 255, 0.95);
 }
 
+/* Insights Streaming Progress */
+.insights-progress-log {
+    margin-top: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.insights-progress-entry {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.45);
+    padding: 3px 0;
+    animation: progressFadeIn 0.3s ease-out;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.insights-progress-entry:last-child {
+    color: rgba(255, 255, 255, 0.65);
+}
+
+@keyframes progressFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 /* Hidden Videos Feature */
 .view-toggle-tabs {
     display: flex;

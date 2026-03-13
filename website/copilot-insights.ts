@@ -185,6 +185,198 @@ function logSessionEvent(videoId: string, event: SessionEvent): void {
 }
 
 /**
+ * Stream insights research for a video as Server-Sent Events.
+ * If insights are already cached/complete, sends the result immediately.
+ * Otherwise, starts research and streams progress events + final content.
+ */
+export function streamVideoInsights(videoId: string, meta: VideoMeta): ReadableStream<Uint8Array> {
+    const encoder = new TextEncoder();
+
+    function sseMessage(event: string, data: Record<string, unknown>): Uint8Array {
+        return encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    }
+
+    return new ReadableStream<Uint8Array>({
+        start(controller) {
+            // If already complete, send immediately and close
+            const existing = insightsCache.get(videoId);
+            if (existing?.status === 'complete' && existing.content) {
+                controller.enqueue(sseMessage('complete', { content: existing.content }));
+                controller.close();
+                return;
+            }
+            if (existing?.status === 'error') {
+                controller.enqueue(sseMessage('error', { message: existing.error || 'Unknown error' }));
+                controller.close();
+                return;
+            }
+
+            // Start research with progress streaming
+            const insights: VideoInsights = existing || {
+                videoId,
+                status: 'researching',
+            };
+            if (!existing) {
+                insightsCache.set(videoId, insights);
+            }
+
+            controller.enqueue(sseMessage('status', { status: 'researching', message: 'Starting research…' }));
+
+            runResearchStreamed(videoId, meta, insights, controller, sseMessage).catch(err => {
+                log.error(`[insights:${videoId}] Stream research error: ${err.message || err}`);
+                insights.status = 'error';
+                insights.error = err.message || 'Unknown error';
+                try {
+                    controller.enqueue(sseMessage('error', { message: insights.error }));
+                    controller.close();
+                } catch { /* stream may already be closed */ }
+            });
+        },
+    });
+}
+
+/**
+ * Run research with SSE progress streaming.
+ */
+async function runResearchStreamed(
+    videoId: string,
+    meta: VideoMeta,
+    insights: VideoInsights,
+    controller: ReadableStreamDefaultController<Uint8Array>,
+    sseMessage: (event: string, data: Record<string, unknown>) => Uint8Array,
+): Promise<void> {
+    const tag = `[insights:${videoId}]`;
+    const startTime = Date.now();
+    log.info(`AI Insights (streamed): ${meta.title || videoId}`);
+
+    const client = await getClient();
+    const session = await client.createSession({
+        model: "claude-sonnet-4.6",
+        onPermissionRequest: approveAll,
+        systemMessage: {
+            content: `You are a video research assistant. Your job is to research YouTube videos and provide concise, factual contextual information with relevant links.
+
+CRITICAL RULES:
+- Always use web_search to find up-to-date information.
+- Use subagents for parallel searches if needed, but keep responses concise.
+- VERIFY every link and fact you include. After finding a potential link (e.g., an IMDB page), do a follow-up web search to confirm it refers to the correct title, year, and creators. For example, if the video is a trailer for "Feel My Voice" by Netflix, search specifically for that exact title on IMDB and verify the result matches before including it.
+- NEVER guess or hallucinate URLs. If you cannot verify a link is correct, omit it rather than risk providing a wrong one.
+- Cross-reference: check that names, dates, and details from one source match what other sources say.
+- Do not use any tools other than web_search. Do not create or edit any files.
+- Keep your responses focused and well-structured in markdown format.
+
+MOVIE/TV TRAILER STRATEGY:
+When researching a movie or TV trailer, finding the IMDB link is your TOP PRIORITY. Follow this search strategy:
+1. Search for the title + lead actors + "IMDB" (e.g., "In Cold Light Maika Monroe IMDB").
+2. If no IMDB result appears, search for the title + "Wikipedia" — Wikipedia articles reliably link to IMDB pages.
+3. The year in a YouTube trailer title (e.g., "(2026)") may differ from the IMDB listing year — search with actor names rather than relying solely on year.
+4. Always confirm the IMDB URL format is https://www.imdb.com/title/ttXXXXXXXX/ before including it.
+5. Including a verified IMDB link is REQUIRED for any movie or TV series — do not skip this step.`,
+        },
+        infiniteSessions: { enabled: false },
+    });
+
+    // Stream progress events to the client
+    const unsubscribeEvents = session.on((event: SessionEvent) => {
+        logSessionEvent(videoId, event);
+
+        try {
+            switch (event.type) {
+                case "assistant.intent":
+                    controller.enqueue(sseMessage('progress', {
+                        type: 'intent',
+                        message: event.data.intent,
+                    }));
+                    break;
+                case "tool.execution_start":
+                    controller.enqueue(sseMessage('progress', {
+                        type: 'tool_start',
+                        message: `Using ${event.data.toolName}…`,
+                        tool: event.data.toolName,
+                    }));
+                    break;
+                case "tool.execution_complete":
+                    controller.enqueue(sseMessage('progress', {
+                        type: 'tool_complete',
+                        message: `Finished ${(event.data as any).toolName ?? 'tool'}`,
+                        tool: (event.data as any).toolName ?? event.data.toolCallId,
+                        success: event.data.success,
+                    }));
+                    break;
+                case "subagent.started":
+                    controller.enqueue(sseMessage('progress', {
+                        type: 'subagent_start',
+                        message: `Sub-agent: ${event.data.agentName}`,
+                        agent: event.data.agentName,
+                    }));
+                    break;
+                case "subagent.completed":
+                    controller.enqueue(sseMessage('progress', {
+                        type: 'subagent_complete',
+                        message: `Sub-agent finished: ${event.data.agentName}`,
+                        agent: event.data.agentName,
+                    }));
+                    break;
+                case "assistant.turn_start":
+                    controller.enqueue(sseMessage('progress', {
+                        type: 'turn_start',
+                        message: 'Analyzing…',
+                    }));
+                    break;
+            }
+        } catch { /* stream may be closed */ }
+    });
+
+    activeSessions.set(videoId, {
+        abort: async () => {
+            unsubscribeEvents();
+            await session.abort();
+            await session.destroy();
+        },
+    });
+
+    try {
+        const prompt = buildResearchPrompt(videoId, meta);
+        log.info(`${tag} Sending streamed research prompt (${prompt.length} chars)...`);
+        const result = await session.sendAndWait({ prompt }, 3 * 60_000);
+
+        if (insights.status !== 'researching') {
+            log.warn(`${tag} Research was cancelled while awaiting response`);
+            return;
+        }
+
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        if (result?.data?.content) {
+            insights.content = result.data.content;
+            insights.status = 'complete';
+            insights.generatedAt = new Date().toISOString();
+            log.info(`${tag} Research complete in ${elapsed}s (${result.data.content.length} chars)`);
+            controller.enqueue(sseMessage('complete', { content: result.data.content }));
+        } else {
+            insights.status = 'error';
+            insights.error = 'No response from Copilot';
+            log.warn(`${tag} No response received after ${elapsed}s`);
+            controller.enqueue(sseMessage('error', { message: 'No response from Copilot' }));
+        }
+    } catch (err: any) {
+        if (insights.status !== 'researching') return;
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        insights.status = 'error';
+        insights.error = err.message || 'Research failed';
+        log.error(`${tag} Research failed after ${elapsed}s: ${err.message}`);
+        try {
+            controller.enqueue(sseMessage('error', { message: insights.error }));
+        } catch { /* stream closed */ }
+    } finally {
+        unsubscribeEvents();
+        activeSessions.delete(videoId);
+        await session.destroy();
+        log.info(`${tag} Streamed session destroyed`);
+        try { controller.close(); } catch { /* already closed */ }
+    }
+}
+
+/**
  * Background research using Copilot SDK.
  */
 async function runResearch(videoId: string, meta: VideoMeta, insights: VideoInsights): Promise<void> {
