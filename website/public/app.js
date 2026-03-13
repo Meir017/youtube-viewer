@@ -1955,34 +1955,52 @@ async function triggerInsightsResearch(videoId, meta, customPrompt) {
             signal: abortController.signal,
         });
 
-        if (!response.ok || !response.body) {
+        if (!response.ok) {
             videoModalInsights.hidden = true;
             return;
         }
 
-        // Read SSE stream
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let eventType = '';
-        let eventData = '';
-
-        function processLines(lines) {
-            for (const line of lines) {
-                if (line.startsWith('event: ')) {
-                    eventType = line.slice(7);
-                } else if (line.startsWith('data: ')) {
-                    eventData = line.slice(6);
-                } else if (line === '' && eventType && eventData) {
-                    if (currentModalVideoId !== videoId) return false;
-                    handleInsightsEvent(eventType, JSON.parse(eventData));
-                    eventType = '';
-                    eventData = '';
-                }
-            }
-            return true;
+        // Try streaming approach first, fall back to full-body parsing
+        if (response.body) {
+            await readSSEStream(response.body, videoId);
+        } else {
+            // Fallback: read full response text and parse SSE events
+            const text = await response.text();
+            parseSSEText(text, videoId);
         }
+    } catch (err) {
+        if (err.name === 'AbortError') return;
+        console.error('[insights-stream] Error:', err);
+        videoModalInsights.hidden = true;
+    }
+}
 
+async function readSSEStream(body, videoId) {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let eventType = '';
+    let eventData = '';
+
+    function processLine(line) {
+        if (line.startsWith('event: ')) {
+            eventType = line.slice(7);
+        } else if (line.startsWith('data: ')) {
+            eventData += (eventData ? '\n' : '') + line.slice(6);
+        } else if (line === '' && eventType && eventData) {
+            if (currentModalVideoId !== videoId) return false;
+            try {
+                handleInsightsEvent(eventType, JSON.parse(eventData));
+            } catch (e) {
+                console.error('[insights-stream] Parse error:', eventType, e);
+            }
+            eventType = '';
+            eventData = '';
+        }
+        return true;
+    }
+
+    try {
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -1991,20 +2009,62 @@ async function triggerInsightsResearch(videoId, meta, customPrompt) {
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
 
-            if (!processLines(lines)) return;
+            for (const line of lines) {
+                if (!processLine(line)) return;
+            }
         }
 
-        // Flush remaining buffer after stream closes
+        // Flush remaining buffer
         if (buffer.length > 0) {
-            const lines = buffer.split('\n');
-            processLines(lines);
+            for (const line of buffer.split('\n')) {
+                processLine(line);
+            }
         }
         // Process any final pending event
         if (eventType && eventData) {
             if (currentModalVideoId === videoId) {
-                handleInsightsEvent(eventType, JSON.parse(eventData));
+                try {
+                    handleInsightsEvent(eventType, JSON.parse(eventData));
+                } catch (e) {
+                    console.error('[insights-stream] Final parse error:', eventType, e);
+                }
             }
         }
+    } finally {
+        reader.releaseLock();
+    }
+}
+
+function parseSSEText(text, videoId) {
+    const lines = text.split('\n');
+    let eventType = '';
+    let eventData = '';
+
+    for (const line of lines) {
+        if (line.startsWith('event: ')) {
+            eventType = line.slice(7);
+        } else if (line.startsWith('data: ')) {
+            eventData += (eventData ? '\n' : '') + line.slice(6);
+        } else if (line === '' && eventType && eventData) {
+            if (currentModalVideoId !== videoId) return;
+            try {
+                handleInsightsEvent(eventType, JSON.parse(eventData));
+            } catch (e) {
+                console.error('[insights-stream] Text parse error:', eventType, e);
+            }
+            eventType = '';
+            eventData = '';
+        }
+    }
+    // Handle final event without trailing blank line
+    if (eventType && eventData) {
+        try {
+            handleInsightsEvent(eventType, JSON.parse(eventData));
+        } catch (e) {
+            console.error('[insights-stream] Final text parse error:', eventType, e);
+        }
+    }
+}
     } catch (err) {
         if (err.name === 'AbortError') return;
         console.error('Failed to stream insights:', err);
