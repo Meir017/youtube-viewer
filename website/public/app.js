@@ -1968,6 +1968,9 @@ async function triggerInsightsResearch(videoId, meta, customPrompt) {
             const text = await response.text();
             parseSSEText(text, videoId);
         }
+
+        // Always ensure final content is rendered (handles stream parsing failures)
+        await fetchFinalInsights(videoId);
     } catch (err) {
         if (err.name === 'AbortError') return;
         console.error('[insights-stream] Error:', err);
@@ -1981,7 +1984,6 @@ async function readSSEStream(body, videoId) {
     let buffer = '';
     let eventType = '';
     let eventData = '';
-    let insightsRendered = false;
 
     function processLine(line) {
         // Strip trailing \r in case of CRLF line endings
@@ -1995,11 +1997,9 @@ async function readSSEStream(body, videoId) {
             if (currentModalVideoId !== videoId) return false;
             try {
                 const parsed = JSON.parse(eventData);
-                console.log('[insights-stream] Event:', eventType, eventType === 'complete' ? '(content length: ' + (parsed.content?.length ?? 0) + ')' : parsed);
                 handleInsightsEvent(eventType, parsed);
-                if (eventType === 'complete') insightsRendered = true;
             } catch (e) {
-                console.error('[insights-stream] Parse error:', eventType, 'data:', eventData.slice(0, 200), e);
+                console.error('[insights-stream] Parse error:', eventType, 'data length:', eventData.length, e);
             }
             eventType = '';
             eventData = '';
@@ -2031,10 +2031,7 @@ async function readSSEStream(body, videoId) {
         if (eventType && eventData) {
             if (currentModalVideoId === videoId) {
                 try {
-                    const parsed = JSON.parse(eventData);
-                    console.log('[insights-stream] Final event:', eventType);
-                    handleInsightsEvent(eventType, parsed);
-                    if (eventType === 'complete') insightsRendered = true;
+                    handleInsightsEvent(eventType, JSON.parse(eventData));
                 } catch (e) {
                     console.error('[insights-stream] Final parse error:', eventType, e);
                 }
@@ -2043,33 +2040,31 @@ async function readSSEStream(body, videoId) {
     } finally {
         reader.releaseLock();
     }
-
-    // Fallback: if the stream ended without rendering insights, poll the GET endpoint
-    if (!insightsRendered && currentModalVideoId === videoId) {
-        console.warn('[insights-stream] Stream ended without complete event, polling fallback...');
-        await pollInsightsFallback(videoId);
-    }
 }
 
-async function pollInsightsFallback(videoId, retries = 3) {
-    for (let i = 0; i < retries; i++) {
+// After the stream closes, always fetch the final result from the server cache
+async function fetchFinalInsights(videoId) {
+    if (currentModalVideoId !== videoId) return;
+    // If the insights are already rendered (via streaming complete event), skip
+    if (insightsContent.classList.contains('insights-loaded')) return;
+
+    for (let attempt = 0; attempt < 5; attempt++) {
         try {
             const resp = await fetch(`${API_BASE}/videos/${videoId}/insights`);
-            if (!resp.ok) continue;
+            if (!resp.ok) break;
             const data = await resp.json();
             if (data.status === 'complete' && data.content) {
-                console.log('[insights-fallback] Got content via poll (' + data.content.length + ' chars)');
                 if (currentModalVideoId === videoId) {
                     renderInsightsContent(data.content);
                 }
                 return;
             }
-            // If still researching, wait and retry
-            if (data.status === 'researching') {
-                await new Promise(r => setTimeout(r, 2000));
-            }
+            if (data.status === 'error') break;
+            // Still researching — wait and retry
+            await new Promise(r => setTimeout(r, 2000));
         } catch (e) {
             console.error('[insights-fallback] Poll error:', e);
+            break;
         }
     }
 }
@@ -2078,7 +2073,6 @@ function parseSSEText(text, videoId) {
     const lines = text.split('\n');
     let eventType = '';
     let eventData = '';
-    let insightsRendered = false;
 
     for (let line of lines) {
         if (line.endsWith('\r')) line = line.slice(0, -1);
@@ -2089,9 +2083,7 @@ function parseSSEText(text, videoId) {
         } else if (line === '' && eventType && eventData) {
             if (currentModalVideoId !== videoId) return;
             try {
-                const parsed = JSON.parse(eventData);
-                handleInsightsEvent(eventType, parsed);
-                if (eventType === 'complete') insightsRendered = true;
+                handleInsightsEvent(eventType, JSON.parse(eventData));
             } catch (e) {
                 console.error('[insights-stream] Text parse error:', eventType, e);
             }
@@ -2099,20 +2091,12 @@ function parseSSEText(text, videoId) {
             eventData = '';
         }
     }
-    // Handle final event without trailing blank line
     if (eventType && eventData) {
         try {
-            const parsed = JSON.parse(eventData);
-            handleInsightsEvent(eventType, parsed);
-            if (eventType === 'complete') insightsRendered = true;
+            handleInsightsEvent(eventType, JSON.parse(eventData));
         } catch (e) {
             console.error('[insights-stream] Final text parse error:', eventType, e);
         }
-    }
-
-    if (!insightsRendered && currentModalVideoId === videoId) {
-        console.warn('[insights-stream] Text parse: no complete event, polling fallback...');
-        pollInsightsFallback(videoId);
     }
 }
 
