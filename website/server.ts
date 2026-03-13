@@ -2,7 +2,7 @@ import { join } from 'path';
 import { processChannelForWeb } from './channel-processor';
 import { getCachedImage, getCachedAvatar, getCacheStats, clearCache } from './image-cache';
 import { getEnrichmentStatus, startEnrichment } from './video-enrichment';
-import { getVideoInsights, startVideoInsights, cancelVideoInsights, streamVideoInsights } from './copilot-insights';
+import { getVideoInsights, startVideoInsights, cancelVideoInsights } from './copilot-insights';
 import { createStore, ensureDataDir, type StoreInterface } from './store';
 import { createDescriptionsStore } from './descriptions-store';
 import { corsHeaders, finalizeApiResponse } from './api-response';
@@ -56,7 +56,6 @@ const insightsService: insightsRoutes.InsightsService = {
     getVideoInsights,
     startVideoInsights,
     cancelVideoInsights,
-    streamVideoInsights,
 };
 
 // Create handler dependencies
@@ -263,20 +262,6 @@ const server = Bun.serve({
             }
 
             // ==================== VIDEO INSIGHTS API ====================
-
-            // POST /api/videos/:videoId/insights/stream - SSE stream of research progress
-            const streamInsightsMatch = path.match(/^\/api\/videos\/([^/]+)\/insights\/stream$/);
-            if (streamInsightsMatch && req.method === 'POST') {
-                const videoId = streamInsightsMatch[1];
-                const body = await req.json();
-                const response = await insightsRoutes.streamInsightsHandler(insightsDeps, videoId, body);
-                // SSE responses: add CORS headers but skip compression
-                const headers = new Headers(response.headers);
-                for (const [key, value] of Object.entries(corsHeaders)) {
-                    headers.set(key, value);
-                }
-                return new Response(response.body, { status: response.status, headers });
-            }
 
             // POST /api/videos/:videoId/insights - Start or retrieve AI insights
             const startInsightsMatch = path.match(/^\/api\/videos\/([^/]+)\/insights$/);

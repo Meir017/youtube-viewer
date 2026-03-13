@@ -4,7 +4,6 @@ export interface InsightsService {
     getVideoInsights(videoId: string): VideoInsights | undefined;
     startVideoInsights(videoId: string, meta: VideoMeta, customPrompt?: string): VideoInsights;
     cancelVideoInsights(videoId: string): Promise<boolean>;
-    streamVideoInsights(videoId: string, meta: VideoMeta, customPrompt?: string): ReadableStream<Uint8Array>;
 }
 
 export interface InsightsHandlerDeps {
@@ -37,26 +36,6 @@ export async function getInsightsHandler(
         return Response.json({ status: 'not_started' });
     }
     return Response.json(insights);
-}
-
-/**
- * POST /api/videos/:videoId/insights/stream — SSE stream of research progress + final content
- * Body: { title, channelTitle, description, duration, publishedTime, publishDate, isShort, customPrompt? }
- */
-export async function streamInsightsHandler(
-    deps: InsightsHandlerDeps,
-    videoId: string,
-    body: VideoMeta & { customPrompt?: string }
-): Promise<Response> {
-    const { customPrompt, ...meta } = body;
-    const stream = deps.insightsService.streamVideoInsights(videoId, meta, customPrompt);
-    return new Response(stream, {
-        headers: {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-        },
-    });
 }
 
 /**

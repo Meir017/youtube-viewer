@@ -1948,33 +1948,21 @@ async function triggerInsightsResearch(videoId, meta, customPrompt) {
         const body = { ...meta };
         if (customPrompt) body.customPrompt = customPrompt;
 
-        const response = await fetch(`${API_BASE}/videos/${videoId}/insights/stream`, {
+        // Start research (fire-and-forget on server)
+        const startResp = await fetch(`${API_BASE}/videos/${videoId}/insights`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
             signal: abortController.signal,
         });
 
-        if (!response.ok) {
+        if (!startResp.ok) {
             videoModalInsights.hidden = true;
             return;
         }
 
-        // Stream progress events (best-effort — final content fetched separately)
-        try {
-            if (response.body) {
-                await readSSEStream(response.body, videoId);
-            } else {
-                const text = await response.text();
-                parseSSEText(text, videoId);
-            }
-        } catch (streamErr) {
-            console.warn('[insights-stream] Stream error (will poll for result):', streamErr);
-        }
-
-        // Always fetch the final content from the server cache.
-        // This is the primary rendering path — streaming 'complete' is a bonus.
-        await fetchFinalInsights(videoId);
+        // Poll for progress and final content
+        await pollInsightsProgress(videoId, abortController.signal);
     } catch (err) {
         if (err.name === 'AbortError') return;
         console.error('[insights] Error:', err);
@@ -1982,149 +1970,44 @@ async function triggerInsightsResearch(videoId, meta, customPrompt) {
     }
 }
 
-async function readSSEStream(body, videoId) {
-    const reader = body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let eventType = '';
-    let eventData = '';
+async function pollInsightsProgress(videoId, signal) {
+    let renderedProgressCount = 0;
 
-    function processLine(line) {
-        // Strip trailing \r in case of CRLF line endings
-        if (line.endsWith('\r')) line = line.slice(0, -1);
+    while (true) {
+        if (signal.aborted || currentModalVideoId !== videoId) return;
 
-        if (line.startsWith('event: ')) {
-            eventType = line.slice(7);
-        } else if (line.startsWith('data: ')) {
-            eventData += (eventData ? '\n' : '') + line.slice(6);
-        } else if (line === '' && eventType && eventData) {
-            if (currentModalVideoId !== videoId) return false;
-            try {
-                const parsed = JSON.parse(eventData);
-                handleInsightsEvent(eventType, parsed);
-            } catch (e) {
-                console.error('[insights-stream] Parse error:', eventType, 'data length:', eventData.length, e);
-            }
-            eventType = '';
-            eventData = '';
-        }
-        return true;
-    }
-
-    try {
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-
-            for (const line of lines) {
-                if (!processLine(line)) return;
-            }
-        }
-
-        // Flush remaining buffer
-        if (buffer.length > 0) {
-            for (const line of buffer.split('\n')) {
-                processLine(line);
-            }
-        }
-        // Process any final pending event
-        if (eventType && eventData) {
-            if (currentModalVideoId === videoId) {
-                try {
-                    handleInsightsEvent(eventType, JSON.parse(eventData));
-                } catch (e) {
-                    console.error('[insights-stream] Final parse error:', eventType, e);
-                }
-            }
-        }
-    } finally {
-        reader.releaseLock();
-    }
-}
-
-// After the stream closes, always fetch the final result from the server cache
-async function fetchFinalInsights(videoId) {
-    if (currentModalVideoId !== videoId) return;
-    // If the insights are already rendered (via streaming complete event), skip
-    if (insightsContent.classList.contains('insights-loaded')) {
-        console.log('[insights-fallback] Already rendered via stream');
-        return;
-    }
-
-    console.log('[insights-fallback] Polling for final content...');
-    for (let attempt = 0; attempt < 10; attempt++) {
-        if (currentModalVideoId !== videoId) return;
         try {
-            const resp = await fetch(`${API_BASE}/videos/${videoId}/insights`);
+            const resp = await fetch(`${API_BASE}/videos/${videoId}/insights`, { signal });
             if (!resp.ok) break;
             const data = await resp.json();
-            console.log('[insights-fallback] Attempt', attempt + 1, '- status:', data.status, 'hasContent:', !!data.content);
-            if (data.status === 'complete' && data.content) {
-                if (currentModalVideoId === videoId) {
-                    renderInsightsContent(data.content);
-                    console.log('[insights-fallback] Rendered content (' + data.content.length + ' chars)');
+
+            // Render any new progress entries
+            if (data.progressLog && data.progressLog.length > renderedProgressCount) {
+                const newEntries = data.progressLog.slice(renderedProgressCount);
+                for (const entry of newEntries) {
+                    renderInsightsProgress(entry);
                 }
+                renderedProgressCount = data.progressLog.length;
+            }
+
+            // Check for completion
+            if (data.status === 'complete' && data.content) {
+                renderInsightsContent(data.content);
                 return;
             }
             if (data.status === 'error') {
-                console.error('[insights-fallback] Research failed:', data.error);
-                break;
+                console.error('[insights] Research failed:', data.error);
+                videoModalInsights.hidden = true;
+                return;
             }
-            // Still researching — wait and retry
-            await new Promise(r => setTimeout(r, 3000));
-        } catch (e) {
-            console.error('[insights-fallback] Poll error:', e);
+
+            // Still researching — poll again after delay
+            await new Promise(r => setTimeout(r, 1500));
+        } catch (err) {
+            if (err.name === 'AbortError') return;
+            console.error('[insights] Poll error:', err);
             break;
         }
-    }
-}
-
-function parseSSEText(text, videoId) {
-    const lines = text.split('\n');
-    let eventType = '';
-    let eventData = '';
-
-    for (let line of lines) {
-        if (line.endsWith('\r')) line = line.slice(0, -1);
-        if (line.startsWith('event: ')) {
-            eventType = line.slice(7);
-        } else if (line.startsWith('data: ')) {
-            eventData += (eventData ? '\n' : '') + line.slice(6);
-        } else if (line === '' && eventType && eventData) {
-            if (currentModalVideoId !== videoId) return;
-            try {
-                handleInsightsEvent(eventType, JSON.parse(eventData));
-            } catch (e) {
-                console.error('[insights-stream] Text parse error:', eventType, e);
-            }
-            eventType = '';
-            eventData = '';
-        }
-    }
-    if (eventType && eventData) {
-        try {
-            handleInsightsEvent(eventType, JSON.parse(eventData));
-        } catch (e) {
-            console.error('[insights-stream] Final text parse error:', eventType, e);
-        }
-    }
-}
-
-function handleInsightsEvent(eventType, data) {
-    switch (eventType) {
-        case 'progress':
-            renderInsightsProgress(data);
-            break;
-        case 'complete':
-            renderInsightsContent(data.content);
-            break;
-        case 'error':
-            videoModalInsights.hidden = true;
-            break;
     }
 }
 
