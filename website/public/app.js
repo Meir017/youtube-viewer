@@ -1960,20 +1960,24 @@ async function triggerInsightsResearch(videoId, meta, customPrompt) {
             return;
         }
 
-        // Try streaming approach first, fall back to full-body parsing
-        if (response.body) {
-            await readSSEStream(response.body, videoId);
-        } else {
-            // Fallback: read full response text and parse SSE events
-            const text = await response.text();
-            parseSSEText(text, videoId);
+        // Stream progress events (best-effort — final content fetched separately)
+        try {
+            if (response.body) {
+                await readSSEStream(response.body, videoId);
+            } else {
+                const text = await response.text();
+                parseSSEText(text, videoId);
+            }
+        } catch (streamErr) {
+            console.warn('[insights-stream] Stream error (will poll for result):', streamErr);
         }
 
-        // Always ensure final content is rendered (handles stream parsing failures)
+        // Always fetch the final content from the server cache.
+        // This is the primary rendering path — streaming 'complete' is a bonus.
         await fetchFinalInsights(videoId);
     } catch (err) {
         if (err.name === 'AbortError') return;
-        console.error('[insights-stream] Error:', err);
+        console.error('[insights] Error:', err);
         videoModalInsights.hidden = true;
     }
 }
@@ -2046,22 +2050,32 @@ async function readSSEStream(body, videoId) {
 async function fetchFinalInsights(videoId) {
     if (currentModalVideoId !== videoId) return;
     // If the insights are already rendered (via streaming complete event), skip
-    if (insightsContent.classList.contains('insights-loaded')) return;
+    if (insightsContent.classList.contains('insights-loaded')) {
+        console.log('[insights-fallback] Already rendered via stream');
+        return;
+    }
 
-    for (let attempt = 0; attempt < 5; attempt++) {
+    console.log('[insights-fallback] Polling for final content...');
+    for (let attempt = 0; attempt < 10; attempt++) {
+        if (currentModalVideoId !== videoId) return;
         try {
             const resp = await fetch(`${API_BASE}/videos/${videoId}/insights`);
             if (!resp.ok) break;
             const data = await resp.json();
+            console.log('[insights-fallback] Attempt', attempt + 1, '- status:', data.status, 'hasContent:', !!data.content);
             if (data.status === 'complete' && data.content) {
                 if (currentModalVideoId === videoId) {
                     renderInsightsContent(data.content);
+                    console.log('[insights-fallback] Rendered content (' + data.content.length + ' chars)');
                 }
                 return;
             }
-            if (data.status === 'error') break;
+            if (data.status === 'error') {
+                console.error('[insights-fallback] Research failed:', data.error);
+                break;
+            }
             // Still researching — wait and retry
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, 3000));
         } catch (e) {
             console.error('[insights-fallback] Poll error:', e);
             break;
