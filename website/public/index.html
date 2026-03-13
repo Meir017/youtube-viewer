@@ -217,28 +217,30 @@
             <div class="video-modal-backdrop"></div>
             <div class="video-modal-content">
                 <button class="video-modal-close" id="closeVideoModal" title="Close (Esc)">✕</button>
-                <div class="video-modal-player">
-                    <iframe id="videoPlayerIframe" src="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
-                </div>
-                <div class="video-modal-info">
-                    <h3 id="videoModalTitle"></h3>
-                    <div class="video-modal-meta">
-                        <span id="videoModalChannel"></span>
-                        <span id="videoModalViews"></span>
-                        <span id="videoModalDate"></span>
+                <div class="video-modal-main">
+                    <div class="video-modal-player">
+                        <iframe id="videoPlayerIframe" src="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
                     </div>
-                    <div id="videoModalDescription" class="video-modal-description" hidden></div>
-                    <a id="videoModalLink" href="" target="_blank" rel="noopener noreferrer" class="video-modal-youtube-link">Open in YouTube ↗</a>
-                    <div id="videoModalInsights" class="video-modal-insights" hidden>
-                        <div class="insights-header">
-                            <span class="insights-icon">✨</span>
-                            <span class="insights-title">AI Insights</span>
+                    <div class="video-modal-info">
+                        <h3 id="videoModalTitle"></h3>
+                        <div class="video-modal-meta">
+                            <span id="videoModalChannel"></span>
+                            <span id="videoModalViews"></span>
+                            <span id="videoModalDate"></span>
                         </div>
-                        <div id="insightsContent" class="insights-content">
-                            <div class="insights-loading">
-                                <img src="/copilot-loading.svg" alt="Loading insights..." class="insights-loading-svg">
-                                <span class="insights-loading-text">Copilot is researching this video…</span>
-                            </div>
+                        <div id="videoModalDescription" class="video-modal-description" hidden></div>
+                        <a id="videoModalLink" href="" target="_blank" rel="noopener noreferrer" class="video-modal-youtube-link">Open in YouTube ↗</a>
+                    </div>
+                </div>
+                <div id="videoModalInsights" class="video-modal-insights" hidden>
+                    <div class="insights-header">
+                        <span class="insights-icon">✨</span>
+                        <span class="insights-title">AI Insights</span>
+                    </div>
+                    <div id="insightsContent" class="insights-content">
+                        <div class="insights-loading">
+                            <img src="/copilot-loading.svg" alt="Loading insights..." class="insights-loading-svg">
+                            <span class="insights-loading-text">Copilot is researching this video…</span>
                         </div>
                     </div>
                 </div>

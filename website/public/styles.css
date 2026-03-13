@@ -1215,15 +1215,23 @@ body {
 .video-modal-content {
     position: relative;
     width: 90vw;
-    max-width: 1200px;
+    max-width: 1400px;
     max-height: 90vh;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     background: linear-gradient(135deg, #2d3436 0%, #1e272e 100%);
     border-radius: 16px;
     overflow: hidden;
     box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
     border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.video-modal-main {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .video-modal-close {
@@ -1333,13 +1341,16 @@ body {
     box-shadow: 0 5px 20px rgba(255, 0, 0, 0.4);
 }
 
-/* AI Insights Section */
+/* AI Insights Side Pane */
 .video-modal-insights {
-    margin: 15px 0 5px;
-    padding: 18px;
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.08) 100%);
-    border: 1px solid rgba(139, 92, 246, 0.2);
-    border-radius: 12px;
+    width: 340px;
+    flex-shrink: 0;
+    padding: 20px;
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.05) 100%);
+    border-left: 1px solid rgba(139, 92, 246, 0.2);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
 }
 
 .video-modal-insights[hidden] {
@@ -1347,12 +1358,12 @@ body {
 }
 
 .video-modal-insights.fade-in {
-    animation: insightsFadeIn 0.4s ease-out;
+    animation: insightsSlideIn 0.4s ease-out;
 }
 
-@keyframes insightsFadeIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+@keyframes insightsSlideIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
 }
 
 .insights-header {
@@ -1622,6 +1633,14 @@ body {
         width: 95vw;
         max-height: 95vh;
         margin: 10px;
+        flex-direction: column;
+    }
+    
+    .video-modal-insights {
+        width: auto;
+        max-height: 40vh;
+        border-left: none;
+        border-top: 1px solid rgba(139, 92, 246, 0.2);
     }
     
     .video-modal-info h3 {
