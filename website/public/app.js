@@ -175,6 +175,25 @@ class VirtualScrollGrid {
     }
 }
 
+// Default AI insights prompt template
+const DEFAULT_INSIGHTS_PROMPT = `## Research Instructions
+
+Research this video and provide useful contextual information based on its content type:
+
+- **For movie/TV trailers:** IMDB link (required), Rotten Tomatoes score, release date, director, main cast, synopsis, genre, streaming platform
+- **For podcasts/interviews:** Brief bio for each notable guest/personality
+- **For tech talks/tutorials:** Links to referenced projects, tools, libraries; speaker background
+- **For music videos:** Artist info, album name, streaming links
+- **For news/analysis:** Key facts, related articles, timeline of events
+- **General:** Key topics discussed, relevant external links
+
+## Guidelines
+
+- Use **web search** to verify all facts and links
+- Be concise but informative
+- Format as clean **markdown**
+- Only include **verified URLs** — never guess`;
+
 // DOM Elements
 const addChannelForm = document.getElementById('addChannelForm');
 const channelInput = document.getElementById('channelInput');
@@ -285,6 +304,43 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === renameCollectionModal) {
             renameCollectionModal.hidden = true;
             renameCollectionInput.value = '';
+        }
+    });
+
+    // Prompt editor modal listeners
+    const promptEditorModal = document.getElementById('promptEditorModal');
+    const promptEditorTextarea = document.getElementById('promptEditorTextarea');
+    const promptEditorPreview = document.getElementById('promptEditorPreview');
+    const cancelPromptEditorBtn = document.getElementById('cancelPromptEditorBtn');
+    const savePromptBtn = document.getElementById('savePromptBtn');
+    const clearPromptBtn = document.getElementById('clearPromptBtn');
+    const promptEditorResetBtn = document.getElementById('promptEditorResetBtn');
+
+    cancelPromptEditorBtn.addEventListener('click', () => {
+        promptEditorModal.hidden = true;
+    });
+
+    savePromptBtn.addEventListener('click', handleSavePrompt);
+
+    clearPromptBtn.addEventListener('click', () => {
+        promptEditorTextarea.value = '';
+        promptEditorPreview.innerHTML = '';
+    });
+
+    promptEditorResetBtn.addEventListener('click', () => {
+        promptEditorTextarea.value = DEFAULT_INSIGHTS_PROMPT;
+        promptEditorPreview.innerHTML = renderMarkdown(DEFAULT_INSIGHTS_PROMPT);
+    });
+
+    // Live markdown preview
+    promptEditorTextarea.addEventListener('input', () => {
+        promptEditorPreview.innerHTML = renderMarkdown(promptEditorTextarea.value);
+    });
+
+    // Close prompt editor on backdrop click
+    promptEditorModal.addEventListener('click', (e) => {
+        if (e.target === promptEditorModal) {
+            promptEditorModal.hidden = true;
         }
     });
 });
@@ -1072,6 +1128,55 @@ async function handleRenameCollection(e) {
     }
 }
 
+// Open prompt editor modal
+function openPromptEditor(collectionId, e) {
+    e.stopPropagation();
+    const col = collections.find(c => c.id === collectionId);
+    if (!col) return;
+
+    const modal = document.getElementById('promptEditorModal');
+    const textarea = document.getElementById('promptEditorTextarea');
+    const preview = document.getElementById('promptEditorPreview');
+    const collectionIdInput = document.getElementById('promptEditorCollectionId');
+    const collectionNameEl = document.getElementById('promptEditorCollectionName');
+
+    collectionIdInput.value = collectionId;
+    collectionNameEl.textContent = col.name;
+    textarea.value = col.insightsPrompt || '';
+    preview.innerHTML = renderMarkdown(textarea.value);
+    modal.hidden = false;
+    textarea.focus();
+}
+
+// Save prompt editor
+async function handleSavePrompt() {
+    const modal = document.getElementById('promptEditorModal');
+    const textarea = document.getElementById('promptEditorTextarea');
+    const collectionId = document.getElementById('promptEditorCollectionId').value;
+    const promptText = textarea.value.trim();
+
+    const col = collections.find(c => c.id === collectionId);
+    if (!col) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/collections/${collectionId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: col.name, insightsPrompt: promptText || '' }),
+        });
+
+        if (!response.ok) throw new Error('Failed to save prompt');
+
+        // Update local state
+        col.insightsPrompt = promptText || undefined;
+        renderCollectionTabs();
+        modal.hidden = true;
+    } catch (error) {
+        showError('Failed to save insights prompt');
+        console.error('Save prompt error:', error);
+    }
+}
+
 // Select a collection
 async function selectCollection(id) {
     if (activeCollectionId === id) return;
@@ -1215,10 +1320,12 @@ function renderAll() {
 // Render collection tabs
 function renderCollectionTabs() {
     const collectionTabsHtml = collections.map(col => {
+        const hasPrompt = col.insightsPrompt ? ' has-prompt' : '';
         return `
             <button class="collection-tab ${activeCollectionId === col.id ? 'active' : ''}" data-collection="${col.id}">
                 <span class="collection-name">${escapeHtml(col.name)}</span>
                 <span class="collection-actions">
+                    <span class="collection-settings${hasPrompt}" onclick="openPromptEditor('${col.id}', event)" title="AI Insights Prompt">🤖</span>
                     <span class="rename-collection" onclick="openRenameModal('${col.id}', '${escapeHtml(col.name)}', event)" title="Rename collection">✎</span>
                     <span class="remove-collection" onclick="deleteCollection('${col.id}', event)" title="Delete collection">✕</span>
                 </span>
@@ -1231,7 +1338,9 @@ function renderCollectionTabs() {
     // Add click handlers
     collectionTabs.querySelectorAll('.collection-tab').forEach(tab => {
         tab.addEventListener('click', (e) => {
-            if (!e.target.classList.contains('remove-collection') && !e.target.classList.contains('rename-collection')) {
+            if (!e.target.classList.contains('remove-collection') && 
+                !e.target.classList.contains('rename-collection') &&
+                !e.target.classList.contains('collection-settings')) {
                 selectCollection(tab.dataset.collection);
             }
         });
@@ -1764,6 +1873,10 @@ function openVideoModal(videoData) {
     // Start 5-second timer for AI insights
     clearInsightsTimers();
     insightsTimer = setTimeout(() => {
+        // Get custom prompt from active collection
+        const activeCollection = collections.find(c => c.id === activeCollectionId);
+        const customPrompt = activeCollection?.insightsPrompt;
+        
         triggerInsightsResearch(videoId, {
             title,
             channelTitle,
@@ -1772,7 +1885,7 @@ function openVideoModal(videoData) {
             publishedTime,
             publishDate,
             isShort,
-        });
+        }, customPrompt);
     }, 5000);
     
     // Show modal
@@ -1806,7 +1919,7 @@ function clearInsightsTimers() {
     }
 }
 
-async function triggerInsightsResearch(videoId, meta) {
+async function triggerInsightsResearch(videoId, meta, customPrompt) {
     try {
         // Show the insights section with loading state
         videoModalInsights.hidden = false;
@@ -1818,10 +1931,13 @@ async function triggerInsightsResearch(videoId, meta) {
         const abortController = new AbortController();
         insightsAbortController = abortController;
 
+        const body = { ...meta };
+        if (customPrompt) body.customPrompt = customPrompt;
+
         const response = await fetch(`${API_BASE}/videos/${videoId}/insights/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(meta),
+            body: JSON.stringify(body),
             signal: abortController.signal,
         });
 

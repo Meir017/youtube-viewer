@@ -15,6 +15,7 @@ export async function listCollections(deps: CollectionsHandlerDeps): Promise<Res
         name: c.name,
         createdAt: c.createdAt,
         channelCount: c.channels?.length ?? 0,
+        insightsPrompt: c.insightsPrompt,
     }));
 
     return Response.json(metadata);
@@ -49,19 +50,13 @@ export async function createCollection(
 }
 
 /**
- * PUT /api/collections/:id - Update collection name
+ * PUT /api/collections/:id - Update collection settings
  */
 export async function updateCollection(
     deps: CollectionsHandlerDeps,
     id: string,
-    body: { name?: string }
+    body: { name?: string; insightsPrompt?: string }
 ): Promise<Response> {
-    const name = body.name?.trim();
-
-    if (!name) {
-        return Response.json({ error: 'Name is required' }, { status: 400 });
-    }
-
     const store = await deps.store.load();
     const collection = store.collections.find(c => c.id === id);
     
@@ -69,7 +64,21 @@ export async function updateCollection(
         return Response.json({ error: 'Collection not found' }, { status: 404 });
     }
 
-    collection.name = name;
+    // Update name if provided
+    if (body.name?.trim()) {
+        collection.name = body.name.trim();
+    }
+
+    // Update insights prompt (allow empty string to clear)
+    if (body.insightsPrompt !== undefined) {
+        collection.insightsPrompt = body.insightsPrompt || undefined;
+    }
+
+    // Require at least one field to update
+    if (!body.name?.trim() && body.insightsPrompt === undefined) {
+        return Response.json({ error: 'No fields to update' }, { status: 400 });
+    }
+
     await deps.store.save(store);
 
     return Response.json(collection);

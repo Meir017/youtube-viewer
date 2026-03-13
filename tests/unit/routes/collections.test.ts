@@ -106,8 +106,8 @@ describe('Collections API', () => {
                 name: 'Tech',
                 createdAt: collection.createdAt,
                 channelCount: 1,
+                insightsPrompt: undefined,
             });
-            expect(Object.keys(data[0]).sort()).toEqual(['channelCount', 'createdAt', 'id', 'name']);
             expect(data[0].channels).toBeUndefined();
         });
     });
@@ -205,7 +205,7 @@ describe('Collections API', () => {
             expect(data.error).toBe('Collection not found');
         });
 
-        test('returns 400 when name is missing', async () => {
+        test('returns 400 when no fields provided', async () => {
             const collection = createMockCollection();
             deps.store = createInMemoryStore({ collections: [collection] });
 
@@ -213,10 +213,10 @@ describe('Collections API', () => {
             const data = await response.json();
 
             expect(response.status).toBe(400);
-            expect(data.error).toBe('Name is required');
+            expect(data.error).toBe('No fields to update');
         });
 
-        test('returns 400 when name is empty', async () => {
+        test('returns 400 when name is empty and no other fields', async () => {
             const collection = createMockCollection();
             deps.store = createInMemoryStore({ collections: [collection] });
 
@@ -224,7 +224,7 @@ describe('Collections API', () => {
             const data = await response.json();
 
             expect(response.status).toBe(400);
-            expect(data.error).toBe('Name is required');
+            expect(data.error).toBe('No fields to update');
         });
 
         test('trims whitespace from name', async () => {
@@ -269,6 +269,42 @@ describe('Collections API', () => {
 
             expect(data.channels).toHaveLength(1);
             expect(data.channels[0].handle).toBe('@GitHub');
+        });
+
+        test('updates insightsPrompt', async () => {
+            const collection = createMockCollection();
+            deps.store = createInMemoryStore({ collections: [collection] });
+
+            const prompt = '## Custom Prompt\nFocus on tech details';
+            const response = await updateCollection(deps, collection.id, { insightsPrompt: prompt });
+            const data = await response.json();
+
+            expect(response.status).toBe(200);
+            expect(data.insightsPrompt).toBe(prompt);
+        });
+
+        test('clears insightsPrompt with empty string', async () => {
+            const collection = createMockCollection();
+            (collection as any).insightsPrompt = 'old prompt';
+            deps.store = createInMemoryStore({ collections: [collection] });
+
+            const response = await updateCollection(deps, collection.id, { insightsPrompt: '' });
+            const data = await response.json();
+
+            expect(response.status).toBe(200);
+            expect(data.insightsPrompt).toBeUndefined();
+        });
+
+        test('updates insightsPrompt without changing name', async () => {
+            const collection = createMockCollection({ name: 'Movies' });
+            deps.store = createInMemoryStore({ collections: [collection] });
+
+            const prompt = 'Focus on IMDB and Rotten Tomatoes';
+            const response = await updateCollection(deps, collection.id, { insightsPrompt: prompt });
+            const data = await response.json();
+
+            expect(data.name).toBe('Movies');
+            expect(data.insightsPrompt).toBe(prompt);
         });
     });
 

@@ -59,6 +59,7 @@ export interface Collection {
     createdAt: string;
     hiddenVideos?: string[]; // Array of video IDs that are hidden
     starredVideos?: string[]; // Array of video IDs that are starred/favorited
+    insightsPrompt?: string; // Custom markdown prompt for AI insights
 }
 
 // In-memory job tracking

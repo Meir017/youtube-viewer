@@ -74,6 +74,37 @@
                     </form>
                 </div>
             </div>
+
+            <!-- Collection Insights Prompt Editor Modal -->
+            <div id="promptEditorModal" class="modal" hidden>
+                <div class="modal-content prompt-editor-modal">
+                    <div class="prompt-editor-header">
+                        <h3>🤖 AI Insights Prompt</h3>
+                        <span class="prompt-editor-collection-name" id="promptEditorCollectionName"></span>
+                    </div>
+                    <p class="prompt-editor-description">Customize the instructions sent to the AI when researching videos in this collection. Use markdown formatting. Leave empty to use the default prompt.</p>
+                    <div class="prompt-editor-split">
+                        <div class="prompt-editor-pane">
+                            <div class="prompt-editor-pane-header">
+                                <span>✏️ Editor</span>
+                                <button type="button" class="prompt-editor-reset-btn" id="promptEditorResetBtn" title="Reset to default template">Reset to default</button>
+                            </div>
+                            <textarea id="promptEditorTextarea" class="prompt-editor-textarea" placeholder="Enter custom AI insights instructions in markdown..."></textarea>
+                        </div>
+                        <div class="prompt-editor-divider"></div>
+                        <div class="prompt-editor-pane">
+                            <div class="prompt-editor-pane-header"><span>👁️ Preview</span></div>
+                            <div id="promptEditorPreview" class="prompt-editor-preview"></div>
+                        </div>
+                    </div>
+                    <input type="hidden" id="promptEditorCollectionId">
+                    <div class="modal-buttons">
+                        <button type="button" class="cancel-btn" id="cancelPromptEditorBtn">Cancel</button>
+                        <button type="button" class="prompt-editor-clear-btn" id="clearPromptBtn">Clear prompt</button>
+                        <button type="button" class="submit-btn" id="savePromptBtn">Save</button>
+                    </div>
+                </div>
+            </div>
             
             <!-- Add Channel Form (shows when a collection is selected) -->
             <div class="add-channel-inline" id="addChannelSection" hidden>

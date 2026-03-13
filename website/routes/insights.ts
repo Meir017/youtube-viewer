@@ -2,9 +2,9 @@ import type { VideoMeta, VideoInsights } from '../copilot-insights';
 
 export interface InsightsService {
     getVideoInsights(videoId: string): VideoInsights | undefined;
-    startVideoInsights(videoId: string, meta: VideoMeta): VideoInsights;
+    startVideoInsights(videoId: string, meta: VideoMeta, customPrompt?: string): VideoInsights;
     cancelVideoInsights(videoId: string): Promise<boolean>;
-    streamVideoInsights(videoId: string, meta: VideoMeta): ReadableStream<Uint8Array>;
+    streamVideoInsights(videoId: string, meta: VideoMeta, customPrompt?: string): ReadableStream<Uint8Array>;
 }
 
 export interface InsightsHandlerDeps {
@@ -13,14 +13,15 @@ export interface InsightsHandlerDeps {
 
 /**
  * POST /api/videos/:videoId/insights — Trigger or retrieve insights
- * Body: { title, channelTitle, description, duration, publishedTime, publishDate, isShort }
+ * Body: { title, channelTitle, description, duration, publishedTime, publishDate, isShort, customPrompt? }
  */
 export async function startInsightsHandler(
     deps: InsightsHandlerDeps,
     videoId: string,
-    meta: VideoMeta
+    body: VideoMeta & { customPrompt?: string }
 ): Promise<Response> {
-    const insights = deps.insightsService.startVideoInsights(videoId, meta);
+    const { customPrompt, ...meta } = body;
+    const insights = deps.insightsService.startVideoInsights(videoId, meta, customPrompt);
     return Response.json(insights);
 }
 
@@ -40,14 +41,15 @@ export async function getInsightsHandler(
 
 /**
  * POST /api/videos/:videoId/insights/stream — SSE stream of research progress + final content
- * Body: { title, channelTitle, description, duration, publishedTime, publishDate, isShort }
+ * Body: { title, channelTitle, description, duration, publishedTime, publishDate, isShort, customPrompt? }
  */
 export async function streamInsightsHandler(
     deps: InsightsHandlerDeps,
     videoId: string,
-    meta: VideoMeta
+    body: VideoMeta & { customPrompt?: string }
 ): Promise<Response> {
-    const stream = deps.insightsService.streamVideoInsights(videoId, meta);
+    const { customPrompt, ...meta } = body;
+    const stream = deps.insightsService.streamVideoInsights(videoId, meta, customPrompt);
     return new Response(stream, {
         headers: {
             'Content-Type': 'text/event-stream',

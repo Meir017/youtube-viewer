@@ -40,7 +40,7 @@ async function getClient(): Promise<CopilotClient> {
 /**
  * Build a research prompt tailored to the video content.
  */
-function buildResearchPrompt(videoId: string, meta: VideoMeta): string {
+function buildResearchPrompt(videoId: string, meta: VideoMeta, customPrompt?: string): string {
     const parts: string[] = [];
     parts.push(`Research the following YouTube video and provide useful contextual information.`);
     parts.push('');
@@ -58,34 +58,47 @@ function buildResearchPrompt(videoId: string, meta: VideoMeta): string {
         parts.push(`**Description excerpt:** ${truncated}`);
     }
     parts.push('');
-    parts.push(`Use web search to find relevant information about this video's topic. Based on what the video is about, provide the most useful details:`);
-    parts.push('');
-    parts.push(`- **For movie/TV trailers:** Follow the MOVIE/TV SEARCH PROCEDURE below`);
-    parts.push(`- **For podcasts/interviews:** A brief bio paragraph for each notable personality/guest in the video`);
-    parts.push(`- **For tech talks/tutorials:** Links to referenced projects, tools, or libraries; speaker background`);
-    parts.push(`- **For music videos:** Artist info, album name, streaming links`);
-    parts.push(`- **For news/analysis:** Key facts, related articles, timeline of events`);
-    parts.push(`- **General:** Key topics discussed, relevant external links`);
-    parts.push('');
-    parts.push(`## MOVIE/TV SEARCH PROCEDURE`);
-    parts.push(`When the video is a movie trailer, TV series trailer, or film-related content, follow these steps IN ORDER:`);
-    parts.push('');
-    parts.push(`1. **Extract key details from the title:** Parse the movie/show name, year, and actor names from the video title. Note: the year in a trailer title (e.g., "(2026)") is often the trailer upload or release year — the IMDB entry may list an earlier production year.`);
-    parts.push(`2. **Search for the IMDB page directly:** Search for the movie/show name combined with lead actor names and "IMDB" (e.g., \`"In Cold Light" Maika Monroe IMDB\`). Include actor names to disambiguate common titles.`);
-    parts.push(`3. **If the direct IMDB search fails:** Search for the movie's Wikipedia page instead (e.g., \`"In Cold Light" 2026 film Wikipedia\`). Wikipedia articles almost always contain the IMDB link or the IMDB title ID (format: tt followed by digits).`);
-    parts.push(`4. **Verify the IMDB link:** Confirm the IMDB page matches by checking that the title, cast, and director align with the trailer. The correct URL format is \`https://www.imdb.com/title/ttXXXXXXXX/\`.`);
-    parts.push(`5. **For TV series:** Also include the season number (if the trailer is for a specific season), episode count, network/platform, and premiere date.`);
-    parts.push('');
-    parts.push(`**Required fields for movies/TV (include all that you can verify):**`);
-    parts.push(`- IMDB link — this is REQUIRED. You MUST include a verified IMDB link for any movie or TV series. Do not consider the research complete without it. If you cannot find the IMDB page after exhausting all search strategies above, explicitly state that no IMDB page was found.`);
-    parts.push(`- Rotten Tomatoes score (if available)`);
-    parts.push(`- Release date / premiere date`);
-    parts.push(`- Director`);
-    parts.push(`- Main cast (top 3-5 actors with character names if available)`);
-    parts.push(`- Brief synopsis (2-3 sentences, spoiler-free)`);
-    parts.push(`- Genre`);
-    parts.push(`- Streaming platform or distributor (e.g., Netflix, A24, Saban Films)`);
-    parts.push('');
+
+    // If a custom prompt is provided by the collection, use it as the primary instructions
+    if (customPrompt?.trim()) {
+        parts.push(`## COLLECTION-SPECIFIC INSTRUCTIONS`);
+        parts.push(`The user has provided the following custom instructions for researching videos in this collection. Follow these instructions as the PRIMARY guide for what information to include:`);
+        parts.push('');
+        parts.push(customPrompt.trim());
+        parts.push('');
+        parts.push(`## GENERAL GUIDELINES`);
+        parts.push(`In addition to the custom instructions above:`);
+    } else {
+        parts.push(`Use web search to find relevant information about this video's topic. Based on what the video is about, provide the most useful details:`);
+        parts.push('');
+        parts.push(`- **For movie/TV trailers:** Follow the MOVIE/TV SEARCH PROCEDURE below`);
+        parts.push(`- **For podcasts/interviews:** A brief bio paragraph for each notable personality/guest in the video`);
+        parts.push(`- **For tech talks/tutorials:** Links to referenced projects, tools, or libraries; speaker background`);
+        parts.push(`- **For music videos:** Artist info, album name, streaming links`);
+        parts.push(`- **For news/analysis:** Key facts, related articles, timeline of events`);
+        parts.push(`- **General:** Key topics discussed, relevant external links`);
+        parts.push('');
+        parts.push(`## MOVIE/TV SEARCH PROCEDURE`);
+        parts.push(`When the video is a movie trailer, TV series trailer, or film-related content, follow these steps IN ORDER:`);
+        parts.push('');
+        parts.push(`1. **Extract key details from the title:** Parse the movie/show name, year, and actor names from the video title. Note: the year in a trailer title (e.g., "(2026)") is often the trailer upload or release year — the IMDB entry may list an earlier production year.`);
+        parts.push(`2. **Search for the IMDB page directly:** Search for the movie/show name combined with lead actor names and "IMDB" (e.g., \`"In Cold Light" Maika Monroe IMDB\`). Include actor names to disambiguate common titles.`);
+        parts.push(`3. **If the direct IMDB search fails:** Search for the movie's Wikipedia page instead (e.g., \`"In Cold Light" 2026 film Wikipedia\`). Wikipedia articles almost always contain the IMDB link or the IMDB title ID (format: tt followed by digits).`);
+        parts.push(`4. **Verify the IMDB link:** Confirm the IMDB page matches by checking that the title, cast, and director align with the trailer. The correct URL format is \`https://www.imdb.com/title/ttXXXXXXXX/\`.`);
+        parts.push(`5. **For TV series:** Also include the season number (if the trailer is for a specific season), episode count, network/platform, and premiere date.`);
+        parts.push('');
+        parts.push(`**Required fields for movies/TV (include all that you can verify):**`);
+        parts.push(`- IMDB link — this is REQUIRED. You MUST include a verified IMDB link for any movie or TV series. Do not consider the research complete without it. If you cannot find the IMDB page after exhausting all search strategies above, explicitly state that no IMDB page was found.`);
+        parts.push(`- Rotten Tomatoes score (if available)`);
+        parts.push(`- Release date / premiere date`);
+        parts.push(`- Director`);
+        parts.push(`- Main cast (top 3-5 actors with character names if available)`);
+        parts.push(`- Brief synopsis (2-3 sentences, spoiler-free)`);
+        parts.push(`- Genre`);
+        parts.push(`- Streaming platform or distributor (e.g., Netflix, A24, Saban Films)`);
+        parts.push('');
+    }
+
     parts.push(`## GENERAL VERIFICATION STEPS (you MUST follow these for ALL content types):`);
     parts.push(`1. First, search for the video topic to understand what it is about.`);
     parts.push(`2. For any external link you plan to include (IMDB, Rotten Tomatoes, Wikipedia, etc.), do a dedicated search to find the EXACT correct page. Search for the specific title AND the platform name (e.g., "Feel My Voice Netflix IMDB").`);
@@ -110,7 +123,7 @@ export function getVideoInsights(videoId: string): VideoInsights | undefined {
  * If already started, returns existing entry.
  * Returns the insights entry (status will be 'researching' for new requests).
  */
-export function startVideoInsights(videoId: string, meta: VideoMeta): VideoInsights {
+export function startVideoInsights(videoId: string, meta: VideoMeta, customPrompt?: string): VideoInsights {
     const existing = insightsCache.get(videoId);
     if (existing) {
         return existing;
@@ -123,7 +136,7 @@ export function startVideoInsights(videoId: string, meta: VideoMeta): VideoInsig
     insightsCache.set(videoId, insights);
 
     // Fire and forget — run research in background
-    runResearch(videoId, meta, insights).catch(err => {
+    runResearch(videoId, meta, insights, customPrompt).catch(err => {
         log.error(`[insights:${videoId}] Unhandled research error: ${err.message || err}`);
         insights.status = 'error';
         insights.error = err.message || 'Unknown error';
@@ -189,7 +202,7 @@ function logSessionEvent(videoId: string, event: SessionEvent): void {
  * If insights are already cached/complete, sends the result immediately.
  * Otherwise, starts research and streams progress events + final content.
  */
-export function streamVideoInsights(videoId: string, meta: VideoMeta): ReadableStream<Uint8Array> {
+export function streamVideoInsights(videoId: string, meta: VideoMeta, customPrompt?: string): ReadableStream<Uint8Array> {
     const encoder = new TextEncoder();
 
     function sseMessage(event: string, data: Record<string, unknown>): Uint8Array {
@@ -222,7 +235,7 @@ export function streamVideoInsights(videoId: string, meta: VideoMeta): ReadableS
 
             controller.enqueue(sseMessage('status', { status: 'researching', message: 'Starting research…' }));
 
-            runResearchStreamed(videoId, meta, insights, controller, sseMessage).catch(err => {
+            runResearchStreamed(videoId, meta, insights, controller, sseMessage, customPrompt).catch(err => {
                 log.error(`[insights:${videoId}] Stream research error: ${err.message || err}`);
                 insights.status = 'error';
                 insights.error = err.message || 'Unknown error';
@@ -244,6 +257,7 @@ async function runResearchStreamed(
     insights: VideoInsights,
     controller: ReadableStreamDefaultController<Uint8Array>,
     sseMessage: (event: string, data: Record<string, unknown>) => Uint8Array,
+    customPrompt?: string,
 ): Promise<void> {
     const tag = `[insights:${videoId}]`;
     const startTime = Date.now();
@@ -336,7 +350,7 @@ When researching a movie or TV trailer, finding the IMDB link is your TOP PRIORI
     });
 
     try {
-        const prompt = buildResearchPrompt(videoId, meta);
+        const prompt = buildResearchPrompt(videoId, meta, customPrompt);
         log.info(`${tag} Sending streamed research prompt (${prompt.length} chars)...`);
         const result = await session.sendAndWait({ prompt }, 3 * 60_000);
 
@@ -379,7 +393,7 @@ When researching a movie or TV trailer, finding the IMDB link is your TOP PRIORI
 /**
  * Background research using Copilot SDK.
  */
-async function runResearch(videoId: string, meta: VideoMeta, insights: VideoInsights): Promise<void> {
+async function runResearch(videoId: string, meta: VideoMeta, insights: VideoInsights, customPrompt?: string): Promise<void> {
     const tag = `[insights:${videoId}]`;
     const startTime = Date.now();
     log.info(`AI Insights: ${meta.title || videoId}`);
@@ -433,7 +447,7 @@ When researching a movie or TV trailer, finding the IMDB link is your TOP PRIORI
     });
 
     try {
-        const prompt = buildResearchPrompt(videoId, meta);
+        const prompt = buildResearchPrompt(videoId, meta, customPrompt);
         log.info(`${tag} Sending research prompt (${prompt.length} chars), waiting up to 3 min...`);
         const result = await session.sendAndWait({ prompt }, 3 * 60_000);
 
