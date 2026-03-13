@@ -2065,12 +2065,6 @@ function parseSSEText(text, videoId) {
         }
     }
 }
-    } catch (err) {
-        if (err.name === 'AbortError') return;
-        console.error('Failed to stream insights:', err);
-        videoModalInsights.hidden = true;
-    }
-}
 
 function handleInsightsEvent(eventType, data) {
     switch (eventType) {
