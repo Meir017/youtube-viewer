@@ -190,7 +190,10 @@
                         <button class="age-preset-btn active" data-days="0">All</button>
                     </div>
                     <div class="age-custom-group">
-                        <input type="number" id="customAgeDaysInput" min="1" placeholder="days">
+                        <input type="number" id="ageFromDaysInput" min="0" placeholder="from">
+                        <span class="age-range-separator">–</span>
+                        <input type="number" id="ageToDaysInput" min="1" placeholder="to">
+                        <span class="age-range-unit">days</span>
                         <button id="applyCustomAgeBtn" class="age-apply-btn">Apply</button>
                     </div>
                 </div>

@@ -59,17 +59,21 @@ function createTestVideo(overrides: Partial<TestVideo> = {}): TestVideo {
 function filterVideos(
     videos: TestVideo[],
     options: {
-        ageRangeDays: number;
+        ageMinDays?: number;
+        ageMaxDays?: number;
         activeChannel?: string;
         searchQuery?: string;
     }
 ): TestVideo[] {
-    const { ageRangeDays, activeChannel = 'all', searchQuery = '' } = options;
+    const { ageMinDays = 0, ageMaxDays = Infinity, activeChannel = 'all', searchQuery = '' } = options;
 
     return videos.filter(video => {
         const matchesChannel = activeChannel === 'all' || video.channelIndex === parseInt(activeChannel);
         const matchesSearch = searchQuery === '' || (video.title || '').toLowerCase().includes(searchQuery);
-        const matchesAge = ageRangeDays === Infinity || getVideoAgeDays(video) <= ageRangeDays;
+        const videoAge = getVideoAgeDays(video);
+        const matchesAgeMin = videoAge >= ageMinDays;
+        const matchesAgeMax = ageMaxDays === Infinity || videoAge <= ageMaxDays;
+        const matchesAge = matchesAgeMin && matchesAgeMax;
         return matchesChannel && matchesSearch && matchesAge && !video.isShort;
     });
 }
@@ -190,25 +194,25 @@ describe('filterVideos with age range', () => {
     // Remove publishedTime from "No date" video
     delete (videos[5] as any).publishedTime;
 
-    test('shows all videos when ageRangeDays is Infinity (All preset)', () => {
-        const result = filterVideos(videos, { ageRangeDays: Infinity });
+    test('shows all videos when no age bounds set (All preset)', () => {
+        const result = filterVideos(videos, {});
         expect(result).toHaveLength(6);
     });
 
     test('filters to last 7 days (1W preset)', () => {
-        const result = filterVideos(videos, { ageRangeDays: 7 });
+        const result = filterVideos(videos, { ageMaxDays: 7 });
         expect(result).toHaveLength(2);
         expect(result.map(v => v.title)).toEqual(['Recent', 'Last week']);
     });
 
     test('filters to last 30 days (1M preset)', () => {
-        const result = filterVideos(videos, { ageRangeDays: 30 });
+        const result = filterVideos(videos, { ageMaxDays: 30 });
         expect(result).toHaveLength(3);
         expect(result.map(v => v.title)).toEqual(['Recent', 'Last week', 'Last month']);
     });
 
     test('filters to last 60 days (2M preset)', () => {
-        const result = filterVideos(videos, { ageRangeDays: 60 });
+        const result = filterVideos(videos, { ageMaxDays: 60 });
         const titles = result.map(v => v.title);
         expect(titles).toContain('Recent');
         expect(titles).toContain('Last week');
@@ -218,24 +222,24 @@ describe('filterVideos with age range', () => {
     });
 
     test('filters to last 365 days (1Y preset)', () => {
-        const result = filterVideos(videos, { ageRangeDays: 365 });
+        const result = filterVideos(videos, { ageMaxDays: 365 });
         expect(result).toHaveLength(5);
         expect(result.map(v => v.title)).not.toContain('No date');
     });
 
     test('excludes videos with no date when age range is set', () => {
-        const result = filterVideos(videos, { ageRangeDays: 30 });
+        const result = filterVideos(videos, { ageMaxDays: 30 });
         expect(result.find(v => v.title === 'No date')).toBeUndefined();
     });
 
-    test('includes videos with no date when ageRangeDays is Infinity', () => {
-        const result = filterVideos(videos, { ageRangeDays: Infinity });
+    test('includes videos with no date when no bounds set', () => {
+        const result = filterVideos(videos, {});
         expect(result.find(v => v.title === 'No date')).toBeDefined();
     });
 
     test('combines age range with search query', () => {
         const result = filterVideos(videos, {
-            ageRangeDays: 30,
+            ageMaxDays: 30,
             searchQuery: 'last',
         });
         expect(result).toHaveLength(2);
@@ -249,7 +253,7 @@ describe('filterVideos with age range', () => {
             createTestVideo({ title: 'Ch0 Old', publishedTime: '1 year ago', channelIndex: 0 }),
         ];
         const result = filterVideos(channelVideos, {
-            ageRangeDays: 30,
+            ageMaxDays: 30,
             activeChannel: '0',
         });
         expect(result).toHaveLength(1);
@@ -261,13 +265,13 @@ describe('filterVideos with age range', () => {
             createTestVideo({ title: 'Regular', publishedTime: '1 day ago', isShort: false }),
             createTestVideo({ title: 'Short', publishedTime: '1 day ago', isShort: true }),
         ];
-        const result = filterVideos(mixedVideos, { ageRangeDays: 30 });
+        const result = filterVideos(mixedVideos, { ageMaxDays: 30 });
         expect(result).toHaveLength(1);
         expect(result[0].title).toBe('Regular');
     });
 
-    test('custom age range works with arbitrary day values', () => {
-        const result = filterVideos(videos, { ageRangeDays: 10 });
+    test('custom max age works with arbitrary day values', () => {
+        const result = filterVideos(videos, { ageMaxDays: 10 });
         expect(result).toHaveLength(2);
     });
 
@@ -279,9 +283,51 @@ describe('filterVideos with age range', () => {
             createTestVideo({ title: 'Enriched Recent', publishDate: twoDaysAgo, publishedTime: '2 days ago' }),
             createTestVideo({ title: 'Enriched Old', publishDate: thirtyDaysAgo, publishedTime: '1 month ago' }),
         ];
-        const result = filterVideos(enrichedVideos, { ageRangeDays: 7 });
+        const result = filterVideos(enrichedVideos, { ageMaxDays: 7 });
         expect(result).toHaveLength(1);
         expect(result[0].title).toBe('Enriched Recent');
+    });
+
+    // New: age range (min + max) tests
+    test('filters videos within a specific age range (e.g., 30–60 days)', () => {
+        const result = filterVideos(videos, { ageMinDays: 20, ageMaxDays: 60 });
+        const titles = result.map(v => v.title);
+        expect(titles).toContain('Last month');
+        expect(titles).toContain('Two months');
+        expect(titles).not.toContain('Recent');
+        expect(titles).not.toContain('Last week');
+        expect(titles).not.toContain('Old video');
+    });
+
+    test('filters videos older than N days (min only, no max)', () => {
+        const result = filterVideos(videos, { ageMinDays: 30 });
+        const titles = result.map(v => v.title);
+        expect(titles).toContain('Two months');
+        expect(titles).toContain('Old video');
+        expect(titles).toContain('No date'); // Infinity >= 30
+        expect(titles).not.toContain('Recent');
+        expect(titles).not.toContain('Last week');
+    });
+
+    test('filters 12-15 months ago range', () => {
+        const vid11mo = createTestVideo({ title: '11 months', publishedTime: '11 months ago' });
+        const vid13mo = createTestVideo({ title: '13 months', publishedTime: '13 months ago' });
+        const vid15mo = createTestVideo({ title: '15 months', publishedTime: '15 months ago' });
+        const vid16mo = createTestVideo({ title: '16 months', publishedTime: '16 months ago' });
+        const allVids = [vid11mo, vid13mo, vid15mo, vid16mo];
+        // 12 months = 360 days, 15 months = 450 days
+        const result = filterVideos(allVids, { ageMinDays: 360, ageMaxDays: 450 });
+        const titles = result.map(v => v.title);
+        expect(titles).toContain('13 months');
+        expect(titles).toContain('15 months');
+        expect(titles).not.toContain('11 months');
+        expect(titles).not.toContain('16 months');
+    });
+
+    test('empty range returns no results', () => {
+        // min > max is contradictory
+        const result = filterVideos(videos, { ageMinDays: 100, ageMaxDays: 5 });
+        expect(result).toHaveLength(0);
     });
 });
 
@@ -297,12 +343,14 @@ describe('Age range preset mappings', () => {
     ];
 
     for (const preset of presets) {
-        test(`preset "${preset.label}" maps to ${preset.days === 0 ? 'Infinity' : preset.days + ' days'}`, () => {
-            const ageRangeDays = preset.days === 0 ? Infinity : preset.days;
+        test(`preset "${preset.label}" maps to ageMinDays=0, ageMaxDays=${preset.days === 0 ? 'Infinity' : preset.days}`, () => {
+            const ageMinDays = 0;
+            const ageMaxDays = preset.days === 0 ? Infinity : preset.days;
+            expect(ageMinDays).toBe(0);
             if (preset.days === 0) {
-                expect(ageRangeDays).toBe(Infinity);
+                expect(ageMaxDays).toBe(Infinity);
             } else {
-                expect(ageRangeDays).toBe(preset.days);
+                expect(ageMaxDays).toBe(preset.days);
             }
         });
     }

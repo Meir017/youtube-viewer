@@ -456,8 +456,8 @@ body {
 }
 
 .age-custom-group input[type="number"] {
-    width: 55px;
-    padding: 6px 10px;
+    width: 50px;
+    padding: 6px 8px;
     border: 1px solid rgba(255,255,255,0.2);
     border-radius: 6px;
     background: rgba(255,255,255,0.08);
@@ -466,6 +466,18 @@ body {
     outline: none;
     transition: border-color 0.3s, background 0.3s;
     -moz-appearance: textfield;
+}
+
+.age-range-separator {
+    color: rgba(255,255,255,0.5);
+    font-size: 0.85rem;
+    padding: 0 2px;
+}
+
+.age-range-unit {
+    color: rgba(255,255,255,0.5);
+    font-size: 0.78rem;
+    padding-right: 2px;
 }
 
 .age-custom-group input[type="number"]::-webkit-outer-spin-button,

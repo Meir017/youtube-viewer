@@ -31,7 +31,8 @@ let currentSort = { by: 'date', order: 'asc' };
 let currentMaxAge = 30;
 let minDurationMinutes = 0;
 let maxDurationMinutes = Infinity;
-let ageRangeDays = Infinity; // Client-side age range filter (Infinity = show all)
+let ageMinDays = 0;        // Client-side age range filter: minimum age in days
+let ageMaxDays = Infinity; // Client-side age range filter: maximum age in days (Infinity = no limit)
 
 // Virtual scroll state
 let videosVirtualScroll = null;
@@ -188,7 +189,8 @@ const shortsSection = document.getElementById('shortsSection');
 const minDurationInput = document.getElementById('minDurationInput');
 const maxDurationInput = document.getElementById('maxDurationInput');
 const agePresetButtons = document.querySelectorAll('.age-preset-btn');
-const customAgeDaysInput = document.getElementById('customAgeDaysInput');
+const ageFromDaysInput = document.getElementById('ageFromDaysInput');
+const ageToDaysInput = document.getElementById('ageToDaysInput');
 const applyCustomAgeBtn = document.getElementById('applyCustomAgeBtn');
 
 // Initialize
@@ -209,7 +211,10 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', () => handleAgePreset(btn));
     });
     applyCustomAgeBtn.addEventListener('click', handleCustomAgeApply);
-    customAgeDaysInput.addEventListener('keydown', (e) => {
+    ageFromDaysInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleCustomAgeApply();
+    });
+    ageToDaysInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') handleCustomAgeApply();
     });
 });
@@ -346,21 +351,27 @@ function handleDurationFilter() {
 // Handle age range preset button click
 function handleAgePreset(btn) {
     const days = parseInt(btn.dataset.days);
-    ageRangeDays = days === 0 ? Infinity : days;
+    ageMinDays = 0;
+    ageMaxDays = days === 0 ? Infinity : days;
     
     agePresetButtons.forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    customAgeDaysInput.value = '';
+    ageFromDaysInput.value = '';
+    ageToDaysInput.value = '';
     
     renderVideos();
 }
 
 // Handle custom age range apply
 function handleCustomAgeApply() {
-    const days = parseInt(customAgeDaysInput.value);
-    if (isNaN(days) || days <= 0) return;
+    const fromDays = parseInt(ageFromDaysInput.value);
+    const toDays = parseInt(ageToDaysInput.value);
     
-    ageRangeDays = days;
+    // At least one bound must be specified
+    if ((isNaN(fromDays) || fromDays < 0) && (isNaN(toDays) || toDays <= 0)) return;
+    
+    ageMinDays = (!isNaN(fromDays) && fromDays >= 0) ? fromDays : 0;
+    ageMaxDays = (!isNaN(toDays) && toDays > 0) ? toDays : Infinity;
     agePresetButtons.forEach(b => b.classList.remove('active'));
     
     renderVideos();
@@ -453,8 +464,11 @@ function filterVideos(videos) {
         const matchesMinDuration = durationSec >= minDurationSec;
         const matchesMaxDuration = maxDurationSec === Infinity || durationSec <= maxDurationSec;
         
-        // Age range filter
-        const matchesAge = ageRangeDays === Infinity || getVideoAgeDays(video) <= ageRangeDays;
+        // Age range filter (min/max days)
+        const videoAge = getVideoAgeDays(video);
+        const matchesAgeMin = videoAge >= ageMinDays;
+        const matchesAgeMax = ageMaxDays === Infinity || videoAge <= ageMaxDays;
+        const matchesAge = matchesAgeMin && matchesAgeMax;
         
         return matchesChannel && matchesSearch && matchesMinDuration && matchesMaxDuration && matchesAge && !video.isShort;
     });
