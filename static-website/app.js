@@ -39,6 +39,10 @@ let shortsVirtualScroll = null;
 
 // Video data registry for click handlers (avoids inline JSON escaping issues)
 const videoDataRegistry = new Map();
+const descriptionCache = new Map();
+const collectionCache = new Map();
+let descriptionsPromise = null;
+let currentModalVideoId = null;
 
 // Virtual Scroll Grid Class
 class VirtualScrollGrid {
@@ -366,52 +370,75 @@ function handleCustomAgeApply() {
 async function loadData() {
     showLoading(true);
     try {
-        const response = await fetch('data/channels.json');
-        if (!response.ok) throw new Error('Failed to load data');
+        const response = await fetch('data/index.json');
+        if (!response.ok) throw new Error('Failed to load data index');
         const data = await response.json();
         
-        // Build collections list from data
         collections = (data.collections || []).map(c => ({
             id: c.id,
             name: c.name,
+            channelCount: c.channelCount,
         }));
         
-        // Store full data for channel loading
-        window._staticData = data;
-        
-        // Auto-select first collection
         if (collections.length > 0) {
-            activeCollectionId = collections[0].id;
-            loadCollectionFromData(activeCollectionId);
+            await selectCollection(collections[0].id);
+        } else {
+            renderAll();
         }
-        
-        renderAll();
     } catch (error) {
-        showError('Failed to load data. Make sure data/channels.json exists.');
+        showError('Failed to load data. Make sure data/index.json exists.');
         console.error('Load error:', error);
     } finally {
         showLoading(false);
     }
 }
 
-function loadCollectionFromData(collectionId) {
-    const data = window._staticData;
-    if (!data) return;
-    
-    const collection = data.collections.find(c => c.id === collectionId);
-    if (!collection) return;
-    
+async function loadCollectionFromData(collectionId) {
+    if (!collectionId) return;
+
+    let collection = collectionCache.get(collectionId);
+
+    if (!collection) {
+        const response = await fetch(`data/collection-${encodeURIComponent(collectionId)}.json`);
+        if (!response.ok) {
+            throw new Error(`Failed to load collection ${collectionId}`);
+        }
+
+        collection = await response.json();
+        collectionCache.set(collectionId, collection);
+    }
+
+    if (activeCollectionId !== collectionId) {
+        return;
+    }
+
     channels = collection.channels || [];
     processChannelData();
 }
 
 // Select a collection
-function selectCollection(id) {
-    if (activeCollectionId === id) return;
+async function selectCollection(id) {
+    if (!id) return;
+    if (activeCollectionId === id && collectionCache.has(id)) return;
+
+    showLoading(true);
+    hideError();
     activeCollectionId = id;
     activeChannel = 'all';
-    loadCollectionFromData(id);
-    renderAll();
+
+    try {
+        await loadCollectionFromData(id);
+        renderAll();
+    } catch (error) {
+        channels = [];
+        allVideos = [];
+        allShorts = [];
+        showError(`Failed to load collection data for ${id}.`);
+        console.error('Collection load error:', error);
+        renderAll();
+    } finally {
+        showLoading(false);
+    }
 }
 
 // Filter videos based on active channel, search, duration, and age range
@@ -516,8 +543,8 @@ function renderCollectionTabs() {
     collectionTabs.innerHTML = collectionTabsHtml;
     
     collectionTabs.querySelectorAll('.collection-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            selectCollection(tab.dataset.collection);
+        tab.addEventListener('click', async () => {
+            await selectCollection(tab.dataset.collection);
         });
     });
 }
@@ -688,8 +715,8 @@ function renderVideoCard(video) {
         dateDisplay = `📅 ${escapeHtml(publishedTime)}`;
     }
     
-    // Enriched indicator (shows if video has description data)
-    const enrichedBadge = description ? '<span class="enriched-badge" title="Click for full description">📝</span>' : '';
+    // Enriched indicator (shows if video has publish date enrichment data)
+    const enrichedBadge = publishDate ? '<span class="enriched-badge" title="Click for full description">📝</span>' : '';
     
     return `
         <article class="video-card" onclick="openVideoModalById('${videoId}')" style="cursor: pointer;">
@@ -759,6 +786,54 @@ function linkifyText(text) {
     return escaped.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
 }
 
+function renderModalDescription(description) {
+    if (description) {
+        videoModalDescription.innerHTML = linkifyText(description);
+        videoModalDescription.hidden = false;
+    } else {
+        videoModalDescription.innerHTML = '';
+        videoModalDescription.hidden = true;
+    }
+}
+
+async function ensureDescriptionsLoaded() {
+    if (descriptionsPromise) {
+        return descriptionsPromise;
+    }
+
+    descriptionsPromise = fetch('data/descriptions.json')
+        .then(async (response) => {
+            if (!response.ok) {
+                throw new Error(`Request failed with status ${response.status}`);
+            }
+            return response.json();
+        })
+        .catch((error) => {
+            descriptionsPromise = null;
+            console.error('Failed to load descriptions data:', error);
+            return {};
+        });
+
+    return descriptionsPromise;
+}
+
+async function loadVideoDescription(videoId) {
+    if (descriptionCache.has(videoId)) {
+        return descriptionCache.get(videoId);
+    }
+
+    const descriptions = await ensureDescriptionsLoaded();
+    const description = typeof descriptions[videoId] === 'string' ? descriptions[videoId] : null;
+    descriptionCache.set(videoId, description);
+
+    const videoData = videoDataRegistry.get(videoId);
+    if (videoData) {
+        videoData.description = description || undefined;
+    }
+
+    return description;
+}
+
 function showLoading(show) {
     isLoading = show;
     loadingOverlay.hidden = !show;
@@ -814,6 +889,7 @@ function openVideoModal(videoData) {
     videoModalTitle.textContent = title || 'Untitled';
     videoModalChannel.textContent = channelTitle ? `📺 ${channelTitle}` : '';
     videoModalViews.textContent = viewCount ? `👁️ ${viewCount}` : '';
+    currentModalVideoId = videoId;
     
     // Date display: show exact date with relative time if enriched
     if (publishDate) {
@@ -823,14 +899,22 @@ function openVideoModal(videoData) {
     } else {
         videoModalDate.textContent = '';
     }
-    
-    // Description display (if enriched)
-    if (description) {
-        videoModalDescription.innerHTML = linkifyText(description);
-        videoModalDescription.hidden = false;
+
+    if (typeof description === 'string' && !descriptionCache.has(videoId)) {
+        descriptionCache.set(videoId, description);
+    }
+
+    if (descriptionCache.has(videoId)) {
+        renderModalDescription(descriptionCache.get(videoId));
     } else {
-        videoModalDescription.innerHTML = '';
-        videoModalDescription.hidden = true;
+        videoModalDescription.textContent = 'Loading description...';
+        videoModalDescription.hidden = false;
+        loadVideoDescription(videoId).then((fetchedDescription) => {
+            if (currentModalVideoId !== videoId) {
+                return;
+            }
+            renderModalDescription(fetchedDescription);
+        });
     }
     
     videoModalLink.href = youtubeUrl;
@@ -841,6 +925,7 @@ function openVideoModal(videoData) {
 }
 
 function closeVideoModal() {
+    currentModalVideoId = null;
     videoPlayerModal.hidden = true;
     videoPlayerIframe.src = ''; // Stop video playback
     document.body.style.overflow = '';

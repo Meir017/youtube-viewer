@@ -13,7 +13,7 @@ import {
     type ChannelsHandlerDeps,
     type ChannelProcessor,
 } from '../../../website/routes/channels';
-import { createMockCollection, createMockStoredChannel, createMockChannelData } from '../../utils';
+import { createMockCollection, createMockStoredChannel, createMockChannelData, createMockChannelDetails } from '../../utils';
 
 /**
  * Creates a mock channel processor for testing
@@ -91,6 +91,50 @@ describe('Channels API', () => {
             expect(data).toHaveLength(2);
             expect(data[0].handle).toBe('@GitHub');
             expect(data[1].handle).toBe('@TypeScript');
+        });
+
+        test('returns stripped channel metadata without mutating the store', async () => {
+            const fullChannelData = createMockChannelData({
+                channel: createMockChannelDetails({
+                    vanityUrl: '@GitHub',
+                    channelUrl: 'https://youtube.com/@GitHub',
+                    externalId: 'UC123456789',
+                    keywords: 'github, code',
+                    subscriberCount: '1M subscribers',
+                    videoCount: '999',
+                    viewCount: '123M views',
+                    joinDate: 'Jan 1, 2008',
+                    country: 'US',
+                    links: [{ title: 'Website', url: 'https://github.com' }],
+                    aboutContinuationToken: 'about-token',
+                    familyFriendly: true,
+                    tags: ['github'],
+                }) as any,
+            });
+            const collection = createMockCollection({
+                channels: [createMockStoredChannel({ handle: '@GitHub', data: fullChannelData })],
+            });
+            deps.store = createInMemoryStore({ collections: [collection] });
+
+            const response = await listChannels(deps, collection.id);
+            const data = await response.json();
+
+            expect(response.status).toBe(200);
+            expect(data[0].data.channel).toEqual({
+                title: 'Test Channel',
+                description: 'A test channel description',
+                avatar: 'https://yt3.googleusercontent.com/avatar.jpg',
+            });
+            expect(data[0].data.channel).not.toHaveProperty('subscriberCount');
+            expect(data[0].data.channel).not.toHaveProperty('links');
+            expect(data[0].data.channel).not.toHaveProperty('aboutContinuationToken');
+
+            const storeData = await deps.store.load();
+            expect(storeData.collections[0].channels[0].data?.channel.subscriberCount).toBe('1M subscribers');
+            expect(storeData.collections[0].channels[0].data?.channel.links).toEqual([
+                { title: 'Website', url: 'https://github.com' },
+            ]);
+            expect(storeData.collections[0].channels[0].data?.channel.aboutContinuationToken).toBe('about-token');
         });
 
         test('returns 404 for non-existent collection', async () => {
@@ -238,6 +282,26 @@ describe('Channels API', () => {
 
             expect(response.status).toBe(201);
             expect(data.handle).toBe('@NoAtPrefix');
+        });
+
+        test('returns stripped channel metadata in add responses', async () => {
+            const collection = createMockCollection({ channels: [] });
+            deps.store = createInMemoryStore({ collections: [collection] });
+
+            const response = await addChannel(deps, collection.id, { handle: '@NewChannel' });
+            const data = await response.json();
+
+            expect(data.data.channel).toEqual({
+                title: 'Test Channel',
+                description: 'A test channel description',
+                avatar: 'https://yt3.googleusercontent.com/avatar.jpg',
+            });
+            expect(data.data.channel).not.toHaveProperty('subscriberCount');
+            expect(data.data.channel).not.toHaveProperty('vanityUrl');
+
+            const storeData = await deps.store.load();
+            expect(storeData.collections[0].channels[0].data?.channel.subscriberCount).toBe('100K');
+            expect(storeData.collections[0].channels[0].data?.channel.vanityUrl).toBe('@NewChannel');
         });
 
         test('does not double-prefix handles starting with @', async () => {
@@ -422,6 +486,27 @@ describe('Channels API', () => {
 
             const storeData = await deps.store.load();
             expect(storeData.collections[0].channels[0].lastUpdated).not.toBe(oldDate);
+        });
+
+        test('returns stripped channel metadata in refresh responses', async () => {
+            const channel = createMockStoredChannel({ handle: '@ToRefresh' });
+            const collection = createMockCollection({ channels: [channel] });
+            deps.store = createInMemoryStore({ collections: [collection] });
+
+            const response = await refreshChannel(deps, collection.id, channel.id);
+            const data = await response.json();
+
+            expect(data.data.channel).toEqual({
+                title: 'Test Channel',
+                description: 'A test channel description',
+                avatar: 'https://yt3.googleusercontent.com/avatar.jpg',
+            });
+            expect(data.data.channel).not.toHaveProperty('subscriberCount');
+            expect(data.data.channel).not.toHaveProperty('vanityUrl');
+
+            const storeData = await deps.store.load();
+            expect(storeData.collections[0].channels[0].data?.channel.subscriberCount).toBe('100K');
+            expect(storeData.collections[0].channels[0].data?.channel.vanityUrl).toBe('@ToRefresh');
         });
 
         test('returns 404 for non-existent collection', async () => {

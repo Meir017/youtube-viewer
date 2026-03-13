@@ -188,7 +188,7 @@ bun run tools:build-static -- --output=my-site
 3. Build the static site: `bun run tools:build-static`
 4. Deploy the `dist/static/` directory to any static host
 
-The static site is read-only — it displays the video data as a snapshot without any backend API.
+The static site is read-only — it displays the video data as a snapshot without any backend API. The build outputs a small `data/index.json`, per-collection `data/collection-<id>.json` files, and `data/descriptions.json` for lazy loading.
 
 ## Project Structure
 

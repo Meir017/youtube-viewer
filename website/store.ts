@@ -1,8 +1,14 @@
 import { join } from 'path';
 import type { Collection, StoredChannel } from './video-enrichment';
+import {
+    createDescriptionsStore,
+    type DescriptionsStoreInterface,
+    type VideoDescriptions,
+} from './descriptions-store';
 import { createLogger } from '../generator/logger.ts';
 
 const log = createLogger('store');
+const descriptionsStore = createDescriptionsStore();
 
 const DATA_FILE = join(import.meta.dir, 'data', 'channels.json');
 
@@ -17,30 +23,104 @@ export interface StoreInterface {
     save(store: ChannelsStore): Promise<void>;
 }
 
+function stripDescriptionsFromChannels(
+    channels: StoredChannel[] | undefined,
+    descriptions: VideoDescriptions
+): boolean {
+    let hasDescriptions = false;
+
+    if (!channels) {
+        return false;
+    }
+
+    for (const channel of channels) {
+        for (const video of channel.data?.videos || []) {
+            if (typeof video.description === 'string') {
+                descriptions[video.videoId] = video.description;
+                delete video.description;
+                hasDescriptions = true;
+            }
+        }
+    }
+
+    return hasDescriptions;
+}
+
+export function splitDescriptionsFromStore(store: ChannelsStore): {
+    store: ChannelsStore;
+    descriptions: VideoDescriptions;
+    hasDescriptions: boolean;
+} {
+    const strippedStore = structuredClone(store) as ChannelsStore;
+    strippedStore.collections = strippedStore.collections || [];
+
+    const descriptions: VideoDescriptions = {};
+    let hasDescriptions = false;
+
+    hasDescriptions = stripDescriptionsFromChannels(strippedStore.channels, descriptions) || hasDescriptions;
+
+    for (const collection of strippedStore.collections) {
+        hasDescriptions = stripDescriptionsFromChannels(collection.channels, descriptions) || hasDescriptions;
+    }
+
+    return {
+        store: strippedStore,
+        descriptions,
+        hasDescriptions,
+    };
+}
+
+async function persistDescriptions(
+    descriptions: VideoDescriptions,
+    targetDescriptionsStore: DescriptionsStoreInterface = descriptionsStore
+): Promise<void> {
+    if (Object.keys(descriptions).length === 0) {
+        return;
+    }
+
+    const existingDescriptions = await targetDescriptionsStore.load();
+    await targetDescriptionsStore.save({
+        ...existingDescriptions,
+        ...descriptions,
+    });
+}
+
 /**
  * Load the store from disk.
  * Returns empty store if file doesn't exist or is corrupted.
  * Automatically migrates legacy format (channels array) to collections.
  */
-export async function loadStore(): Promise<ChannelsStore> {
+export async function loadStore(
+    dataFile: string = DATA_FILE,
+    targetDescriptionsStore: DescriptionsStoreInterface = descriptionsStore
+): Promise<ChannelsStore> {
     try {
-        const file = Bun.file(DATA_FILE);
+        const file = Bun.file(dataFile);
         if (await file.exists()) {
-            const data = await file.json();
-            // Migrate legacy format (channels array) to collections
-            if (data.channels && !data.collections) {
-                const migratedStore: ChannelsStore = {
+            const data = await file.json() as ChannelsStore;
+            const needsLegacyMigration = Boolean(data.channels && !data.collections);
+            const storeData: ChannelsStore = needsLegacyMigration
+                ? {
                     collections: [{
                         id: crypto.randomUUID(),
                         name: 'Default',
-                        channels: data.channels,
+                        channels: data.channels || [],
                         createdAt: new Date().toISOString(),
-                    }]
+                    }],
+                }
+                : {
+                    ...data,
+                    collections: data.collections || [],
                 };
-                await saveStore(migratedStore);
-                return migratedStore;
+
+            const stripped = splitDescriptionsFromStore(storeData);
+            await persistDescriptions(stripped.descriptions, targetDescriptionsStore);
+
+            if (needsLegacyMigration || stripped.hasDescriptions) {
+                await saveStore(stripped.store, dataFile, targetDescriptionsStore);
             }
-            return data;
+
+            return stripped.store;
         }
     } catch (e) {
         log.error('Error loading store:', e);
@@ -51,8 +131,14 @@ export async function loadStore(): Promise<ChannelsStore> {
 /**
  * Save the store to disk.
  */
-export async function saveStore(store: ChannelsStore): Promise<void> {
-    await Bun.write(DATA_FILE, JSON.stringify(store, null, 2));
+export async function saveStore(
+    store: ChannelsStore,
+    dataFile: string = DATA_FILE,
+    targetDescriptionsStore: DescriptionsStoreInterface = descriptionsStore
+): Promise<void> {
+    const stripped = splitDescriptionsFromStore(store);
+    await persistDescriptions(stripped.descriptions, targetDescriptionsStore);
+    await Bun.write(dataFile, JSON.stringify(stripped.store, null, 2));
 }
 
 /**
@@ -70,10 +156,13 @@ export async function ensureDataDir(): Promise<void> {
  * Create a store instance (for dependency injection).
  * This allows tests to provide mock implementations.
  */
-export function createStore(): StoreInterface {
+export function createStore(
+    dataFile: string = DATA_FILE,
+    targetDescriptionsStore: DescriptionsStoreInterface = descriptionsStore
+): StoreInterface {
     return {
-        load: loadStore,
-        save: saveStore,
+        load: () => loadStore(dataFile, targetDescriptionsStore),
+        save: (store) => saveStore(store, dataFile, targetDescriptionsStore),
     };
 }
 

@@ -10,7 +10,7 @@ import { createMockCollection, createMockStoredChannel, getTempTestDir, cleanupT
 import type { ChannelsStore } from '../../website/store';
 
 // We'll test the in-memory store for unit tests (no file I/O)
-import { createInMemoryStore } from '../../website/store';
+import { createInMemoryStore, splitDescriptionsFromStore } from '../../website/store';
 
 describe('Store Operations', () => {
     describe('createInMemoryStore', () => {
@@ -254,6 +254,57 @@ describe('Store Operations', () => {
             const data = await store.load();
             
             expect(data.collections[0].name.length).toBe(10000);
+        });
+    });
+
+    describe('Description splitting', () => {
+        test('extracts video descriptions from collections', () => {
+            const storeData: ChannelsStore = {
+                collections: [createMockCollection({
+                    channels: [createMockStoredChannel({
+                        data: {
+                            channel: {
+                                title: 'Test Channel',
+                                description: 'Channel description',
+                                links: [],
+                            },
+                            videos: [
+                                { videoId: 'video-1', title: 'Video 1', description: 'Video description', publishDate: '2024-01-01' },
+                                { videoId: 'video-2', title: 'Video 2' },
+                            ],
+                        } as any,
+                    })],
+                })],
+            };
+
+            const result = splitDescriptionsFromStore(storeData);
+
+            expect(result.descriptions).toEqual({ 'video-1': 'Video description' });
+            expect(result.store.collections[0].channels[0].data?.videos[0].description).toBeUndefined();
+            expect(storeData.collections[0].channels[0].data?.videos[0].description).toBe('Video description');
+        });
+
+        test('extracts video descriptions from legacy channels', () => {
+            const legacyStore: ChannelsStore = {
+                collections: [],
+                channels: [createMockStoredChannel({
+                    data: {
+                        channel: {
+                            title: 'Legacy Channel',
+                            description: 'Legacy description',
+                            links: [],
+                        },
+                        videos: [
+                            { videoId: 'legacy-video', title: 'Legacy Video', description: 'Legacy video description' },
+                        ],
+                    } as any,
+                })],
+            };
+
+            const result = splitDescriptionsFromStore(legacyStore);
+
+            expect(result.descriptions).toEqual({ 'legacy-video': 'Legacy video description' });
+            expect(result.store.channels?.[0].data?.videos[0].description).toBeUndefined();
         });
     });
 

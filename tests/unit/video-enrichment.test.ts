@@ -13,6 +13,7 @@ import {
     type StoredChannel,
     type EnrichmentJob,
 } from '../../website/video-enrichment';
+import type { DescriptionsStoreInterface, VideoDescriptions } from '../../website/descriptions-store';
 import { createMockCollection, createMockStoredChannel, createMockVideo, createMockChannelData } from '../utils';
 
 /**
@@ -72,6 +73,38 @@ function createTestCollection(config: {
         name: 'Test Collection',
         channels,
     });
+}
+
+function createMockDescriptionsStore(initialDescriptions: VideoDescriptions = {}): DescriptionsStoreInterface {
+    const descriptions = { ...initialDescriptions };
+
+    return {
+        async load() {
+            return { ...descriptions };
+        },
+        async save(nextDescriptions) {
+            Object.keys(descriptions).forEach((key) => delete descriptions[key]);
+            Object.assign(descriptions, nextDescriptions);
+        },
+        async get(videoId) {
+            return descriptions[videoId] ?? null;
+        },
+        async set(videoId, description) {
+            descriptions[videoId] = description;
+        },
+    };
+}
+
+async function waitForJobCompletion(collectionId: string): Promise<EnrichmentJob> {
+    for (let attempt = 0; attempt < 100; attempt++) {
+        const job = getEnrichmentJob(collectionId);
+        if (job && job.status !== 'running') {
+            return job;
+        }
+        await Bun.sleep(1);
+    }
+
+    throw new Error(`Timed out waiting for enrichment job ${collectionId}`);
 }
 
 describe('Video Enrichment', () => {
@@ -348,6 +381,35 @@ describe('Video Enrichment', () => {
 
             expect(result.job.total).toBe(5);  // 10 - 3 - 2
             expect(result.job.skipped).toBe(5);  // 3 enriched + 2 shorts
+        });
+
+        test('saves fetched descriptions to the descriptions store without putting them back on videos', async () => {
+            const collection = createTestCollection({ videosPerChannel: 1 });
+            const descriptionsStore = createMockDescriptionsStore();
+            let saveCalls = 0;
+
+            startEnrichment(collection, async () => {
+                saveCalls++;
+            }, {
+                fetchVideoDetails: async (videoId: string) => ({
+                    publishDate: '2024-02-01',
+                    description: `Description for ${videoId}`,
+                }),
+                descriptionsStore,
+                sleep: async () => {},
+                delayMs: 0,
+                concurrency: 1,
+            });
+
+            const job = await waitForJobCompletion(collection.id);
+            const video = collection.channels[0].data?.videos[0];
+
+            expect(job.status).toBe('complete');
+            expect(job.enriched).toBe(1);
+            expect(video?.publishDate).toBe('2024-02-01');
+            expect(video?.description).toBeUndefined();
+            expect(await descriptionsStore.get(video!.videoId)).toBe(`Description for ${video!.videoId}`);
+            expect(saveCalls).toBeGreaterThan(0);
         });
     });
 });

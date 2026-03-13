@@ -10,7 +10,14 @@ export interface CollectionsHandlerDeps {
  */
 export async function listCollections(deps: CollectionsHandlerDeps): Promise<Response> {
     const store = await deps.store.load();
-    return Response.json(store.collections);
+    const metadata = store.collections.map(c => ({
+        id: c.id,
+        name: c.name,
+        createdAt: c.createdAt,
+        channelCount: c.channels?.length ?? 0,
+    }));
+
+    return Response.json(metadata);
 }
 
 /**

@@ -51,7 +51,7 @@ bun run generator/index.ts --channel=@GitHub --html --output=output.html
   - `build-static.ts` - Static site build tool
 - `static-website/` - Static website source files (no backend required)
   - `index.html` - Read-only HTML (no mutation UI)
-  - `app.js` - JavaScript that loads data from local channels.json
+  - `app.js` - JavaScript that loads local index.json metadata and lazy-loads per-collection data files
   - `styles.css` - Styles for the static site
 - `dist/` - Generated HTML output files
 

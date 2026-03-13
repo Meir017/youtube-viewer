@@ -1,6 +1,7 @@
 import type { StoreInterface } from '../store';
 import type { WebChannelData } from '../channel-processor';
 import type { StoredChannel } from '../video-enrichment';
+import { stripStoredChannel } from '../channel-metadata';
 import { createLogger } from '../../generator/logger.ts';
 
 const log = createLogger('channel');
@@ -56,7 +57,7 @@ export async function listChannels(
         await deps.store.save(store);
     }
     
-    return Response.json(collection.channels);
+    return Response.json(collection.channels.map(stripStoredChannel));
 }
 
 /**
@@ -105,7 +106,7 @@ export async function addChannel(
     collection.channels.push(newChannel);
     await deps.store.save(store);
 
-    return Response.json(newChannel, { status: 201 });
+    return Response.json(stripStoredChannel(newChannel), { status: 201 });
 }
 
 /**
@@ -170,7 +171,7 @@ export async function refreshChannel(
     channel.lastUpdated = new Date().toISOString();
     await deps.store.save(store);
 
-    return Response.json(channel);
+    return Response.json(stripStoredChannel(channel));
 }
 
 /**

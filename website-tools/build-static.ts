@@ -3,7 +3,7 @@
  * Static website build tool
  * 
  * Assembles a self-contained static website from static-website/ source files
- * and the channels.json data file.
+ * and collection data derived from website/data/channels.json.
  * 
  * Usage:
  *   bun run website-tools/build-static.ts [options]
@@ -14,6 +14,9 @@
  */
 
 import { join, resolve, relative } from 'path';
+import { createDescriptionsStore, type VideoDescriptions } from '../website/descriptions-store.ts';
+import { stripChannelsStore, type PublicChannelsStore } from '../website/channel-metadata';
+import { splitDescriptionsFromStore, type ChannelsStore } from '../website/store.ts';
 
 // ANSI color codes
 const colors = {
@@ -28,6 +31,9 @@ const colors = {
     red: '\x1b[31m',
     gray: '\x1b[90m',
 };
+
+const textEncoder = new TextEncoder();
+const descriptionsStore = createDescriptionsStore();
 
 // Format file size
 function formatSize(bytes: number): string {
@@ -58,8 +64,9 @@ Options:
   --help, -h       Show this help message
 
 This tool assembles a self-contained static website by copying the static
-source files (index.html, app.js, styles.css) and the channels.json data
-into a single output directory that can be deployed to any static host.
+source files (index.html, app.js, styles.css), writing collection metadata to
+index.json, splitting each collection into its own data file, and storing video
+descriptions in a separate data/descriptions.json file for lazy loading.
 `);
             process.exit(0);
         }
@@ -85,13 +92,32 @@ interface CopiedFile {
     size: number;
 }
 
-export async function buildStatic(outputDir: string): Promise<CopiedFile[]> {
+interface StaticCollectionsIndex {
+    collections: Array<{
+        id: string;
+        name: string;
+        channelCount: number;
+    }>;
+}
+
+interface StaticCollectionData {
+    id: string;
+    name: string;
+    channels: NonNullable<PublicChannelsStore['collections']>[number]['channels'];
+}
+
+interface BuildStaticOptions {
+    store?: ChannelsStore;
+    descriptions?: VideoDescriptions;
+}
+
+export async function buildStatic(outputDir: string, options: BuildStaticOptions = {}): Promise<CopiedFile[]> {
     const outPath = resolve(PROJECT_ROOT, outputDir);
     const dataOutPath = join(outPath, 'data');
 
-    // Validate channels.json exists
+    // Validate channels.json exists when not injected by tests
     const dataFile = Bun.file(DATA_FILE);
-    if (!(await dataFile.exists())) {
+    if (!options.store && !(await dataFile.exists())) {
         throw new Error(
             `channels.json not found at ${DATA_FILE}\n` +
             `Run 'bun run web' first to create collections and channels.`
@@ -121,11 +147,49 @@ export async function buildStatic(outputDir: string): Promise<CopiedFile[]> {
         copied.push({ name: file, size: content.byteLength });
     }
 
-    // Copy channels.json
-    const dataContent = await dataFile.arrayBuffer();
-    const dataDestPath = join(dataOutPath, 'channels.json');
-    await Bun.write(dataDestPath, dataContent);
-    copied.push({ name: 'data/channels.json', size: dataContent.byteLength });
+    // Write collection index and per-collection data files with only the metadata the UI uses
+    const store = options.store ?? await dataFile.json() as ChannelsStore;
+    const extracted = splitDescriptionsFromStore(store);
+    const strippedStore = stripChannelsStore(extracted.store);
+    const existingDescriptions = options.descriptions ?? await descriptionsStore.load();
+    const descriptions = {
+        ...existingDescriptions,
+        ...extracted.descriptions,
+    };
+
+    const indexData: StaticCollectionsIndex = {
+        collections: strippedStore.collections.map((collection) => ({
+            id: collection.id,
+            name: collection.name,
+            channelCount: collection.channels.length,
+        })),
+    };
+
+    const indexContent = JSON.stringify(indexData, null, 2);
+    const indexDestPath = join(dataOutPath, 'index.json');
+    await Bun.write(indexDestPath, indexContent);
+    copied.push({ name: 'data/index.json', size: textEncoder.encode(indexContent).byteLength });
+
+    for (const collection of strippedStore.collections) {
+        const collectionData: StaticCollectionData = {
+            id: collection.id,
+            name: collection.name,
+            channels: collection.channels,
+        };
+        const collectionContent = JSON.stringify(collectionData, null, 2);
+        const collectionFileName = `collection-${collection.id}.json`;
+        const collectionDestPath = join(dataOutPath, collectionFileName);
+        await Bun.write(collectionDestPath, collectionContent);
+        copied.push({
+            name: `data/${collectionFileName}`,
+            size: textEncoder.encode(collectionContent).byteLength,
+        });
+    }
+
+    const descriptionsContent = JSON.stringify(descriptions, null, 2);
+    const descriptionsDestPath = join(dataOutPath, 'descriptions.json');
+    await Bun.write(descriptionsDestPath, descriptionsContent);
+    copied.push({ name: 'data/descriptions.json', size: textEncoder.encode(descriptionsContent).byteLength });
 
     // Remove .gitkeep helper
     const gitkeepPath = join(dataOutPath, '.gitkeep');
@@ -150,7 +214,7 @@ async function main(): Promise<void> {
     const outPath = resolve(PROJECT_ROOT, outputDir);
     console.log(`${colors.dim}📂 Output:${colors.reset} ${relative(PROJECT_ROOT, outPath)}`);
     console.log(`${colors.dim}📂 Source:${colors.reset} static-website/`);
-    console.log(`${colors.dim}📂 Data:${colors.reset}   website/data/channels.json`);
+    console.log(`${colors.dim}📂 Data:${colors.reset}   website/data/channels.json → index.json + collection-*.json + descriptions.json`);
     console.log();
 
     console.log(`${colors.bold}🚀 Building...${colors.reset}`);
@@ -181,4 +245,6 @@ async function main(): Promise<void> {
     }
 }
 
-main();
+if (import.meta.main) {
+    main();
+}

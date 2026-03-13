@@ -4,6 +4,8 @@ import { getCachedImage, getCachedAvatar, getCacheStats, clearCache } from './im
 import { getEnrichmentStatus, startEnrichment } from './video-enrichment';
 import { getVideoInsights, startVideoInsights, cancelVideoInsights } from './copilot-insights';
 import { createStore, ensureDataDir, type StoreInterface } from './store';
+import { createDescriptionsStore } from './descriptions-store';
+import { corsHeaders, finalizeApiResponse } from './api-response';
 import { createLogger } from '../generator/logger.ts';
 
 const log = createLogger('server');
@@ -13,6 +15,7 @@ import * as collectionsRoutes from './routes/collections';
 import * as channelsRoutes from './routes/channels';
 import * as enrichmentRoutes from './routes/enrichment';
 import * as insightsRoutes from './routes/insights';
+import * as descriptionsRoute from './routes/descriptions';
 import * as hiddenRoutes from './routes/hidden';
 import * as starredRoutes from './routes/starred';
 import * as cacheRoutes from './routes/cache';
@@ -22,6 +25,7 @@ const PUBLIC_DIR = join(import.meta.dir, 'public');
 
 // Create dependencies
 const store: StoreInterface = createStore();
+const descriptionsStore = createDescriptionsStore();
 
 const channelProcessor: channelsRoutes.ChannelProcessor = {
     processChannelForWeb,
@@ -57,41 +61,22 @@ const starredDeps: starredRoutes.StarredHandlerDeps = { store };
 const cacheDeps: cacheRoutes.CacheHandlerDeps = { imageCache: imageCacheService };
 const imagesDeps: imagesRoutes.ImagesHandlerDeps = { imageService };
 const insightsDeps: insightsRoutes.InsightsHandlerDeps = { insightsService };
-
-// CORS headers for API responses
-const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-};
-
-/**
- * Add CORS headers to a response
- */
-function withCors(response: Response): Response {
-    const newHeaders = new Headers(response.headers);
-    Object.entries(corsHeaders).forEach(([key, value]) => {
-        newHeaders.set(key, value);
-    });
-    return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: newHeaders,
-    });
-}
+const descriptionsDeps: descriptionsRoute.DescriptionsHandlerDeps = { descriptionsStore };
 
 /**
  * Wrap handler execution with error handling
  */
 async function handleApiRequest(
-    handler: () => Promise<Response>
+    req: Request,
+    handler: () => Promise<Response> | Response
 ): Promise<Response> {
     try {
         const response = await handler();
-        return withCors(response);
+        return finalizeApiResponse(req, response);
     } catch (e: any) {
         log.error('API Error:', e);
-        return withCors(
+        return finalizeApiResponse(
+            req,
             Response.json({ error: e.message || 'Internal server error' }, { status: 500 })
         );
     }
@@ -113,14 +98,14 @@ const server = Bun.serve({
             
             // GET /api/collections - List all collections
             if (path === '/api/collections' && req.method === 'GET') {
-                return handleApiRequest(() => 
+                return handleApiRequest(req, () => 
                     collectionsRoutes.listCollections(collectionsDeps)
                 );
             }
 
             // POST /api/collections - Create a new collection
             if (path === '/api/collections' && req.method === 'POST') {
-                return handleApiRequest(async () => {
+                return handleApiRequest(req, async () => {
                     const body = await req.json() as { name: string };
                     return collectionsRoutes.createCollection(collectionsDeps, body);
                 });
@@ -129,7 +114,7 @@ const server = Bun.serve({
             // PUT /api/collections/:id - Update collection name
             const updateCollectionMatch = path.match(/^\/api\/collections\/([^/]+)$/);
             if (updateCollectionMatch && req.method === 'PUT') {
-                return handleApiRequest(async () => {
+                return handleApiRequest(req, async () => {
                     const id = updateCollectionMatch[1];
                     const body = await req.json() as { name: string };
                     return collectionsRoutes.updateCollection(collectionsDeps, id, body);
@@ -139,7 +124,7 @@ const server = Bun.serve({
             // DELETE /api/collections/:id - Delete a collection
             const deleteCollectionMatch = path.match(/^\/api\/collections\/([^/]+)$/);
             if (deleteCollectionMatch && req.method === 'DELETE') {
-                return handleApiRequest(() => {
+                return handleApiRequest(req, () => {
                     const id = deleteCollectionMatch[1];
                     return collectionsRoutes.deleteCollection(collectionsDeps, id);
                 });
@@ -150,7 +135,7 @@ const server = Bun.serve({
             // GET /api/collections/:collectionId/channels - List channels in collection
             const listChannelsMatch = path.match(/^\/api\/collections\/([^/]+)\/channels$/);
             if (listChannelsMatch && req.method === 'GET') {
-                return handleApiRequest(() => {
+                return handleApiRequest(req, () => {
                     const collectionId = listChannelsMatch[1];
                     const maxAgeDaysParam = url.searchParams.get('maxAgeDays');
                     const maxAgeDays = maxAgeDaysParam ? parseInt(maxAgeDaysParam) || 30 : undefined;
@@ -161,7 +146,7 @@ const server = Bun.serve({
             // POST /api/collections/:collectionId/channels - Add a channel to collection
             const addChannelMatch = path.match(/^\/api\/collections\/([^/]+)\/channels$/);
             if (addChannelMatch && req.method === 'POST') {
-                return handleApiRequest(async () => {
+                return handleApiRequest(req, async () => {
                     const collectionId = addChannelMatch[1];
                     const body = await req.json() as { handle: string };
                     return channelsRoutes.addChannel(channelsDeps, collectionId, body);
@@ -171,7 +156,7 @@ const server = Bun.serve({
             // DELETE /api/collections/:collectionId/channels/:channelId - Remove a channel
             const deleteChannelMatch = path.match(/^\/api\/collections\/([^/]+)\/channels\/([^/]+)$/);
             if (deleteChannelMatch && req.method === 'DELETE') {
-                return handleApiRequest(() => {
+                return handleApiRequest(req, () => {
                     const collectionId = deleteChannelMatch[1];
                     const channelId = deleteChannelMatch[2];
                     return channelsRoutes.deleteChannel(channelsDeps, collectionId, channelId);
@@ -181,7 +166,7 @@ const server = Bun.serve({
             // POST /api/collections/:collectionId/channels/:channelId/refresh - Refresh channel
             const refreshChannelMatch = path.match(/^\/api\/collections\/([^/]+)\/channels\/([^/]+)\/refresh$/);
             if (refreshChannelMatch && req.method === 'POST') {
-                return handleApiRequest(() => {
+                return handleApiRequest(req, () => {
                     const collectionId = refreshChannelMatch[1];
                     const channelId = refreshChannelMatch[2];
                     return channelsRoutes.refreshChannel(channelsDeps, collectionId, channelId);
@@ -193,7 +178,7 @@ const server = Bun.serve({
             // GET /api/collections/:collectionId/enrich/status - Get enrichment status
             const enrichStatusMatch = path.match(/^\/api\/collections\/([^/]+)\/enrich\/status$/);
             if (enrichStatusMatch && req.method === 'GET') {
-                return handleApiRequest(() => {
+                return handleApiRequest(req, () => {
                     const collectionId = enrichStatusMatch[1];
                     return enrichmentRoutes.getEnrichmentStatusHandler(enrichmentDeps, collectionId);
                 });
@@ -202,7 +187,7 @@ const server = Bun.serve({
             // POST /api/collections/:collectionId/enrich - Start enrichment job
             const enrichMatch = path.match(/^\/api\/collections\/([^/]+)\/enrich$/);
             if (enrichMatch && req.method === 'POST') {
-                return handleApiRequest(() => {
+                return handleApiRequest(req, () => {
                     const collectionId = enrichMatch[1];
                     return enrichmentRoutes.startEnrichmentHandler(enrichmentDeps, collectionId);
                 });
@@ -213,7 +198,7 @@ const server = Bun.serve({
             // GET /api/collections/:collectionId/hidden - Get hidden video IDs
             const getHiddenMatch = path.match(/^\/api\/collections\/([^/]+)\/hidden$/);
             if (getHiddenMatch && req.method === 'GET') {
-                return handleApiRequest(() => {
+                return handleApiRequest(req, () => {
                     const collectionId = getHiddenMatch[1];
                     return hiddenRoutes.getHiddenVideos(hiddenDeps, collectionId);
                 });
@@ -222,7 +207,7 @@ const server = Bun.serve({
             // POST /api/collections/:collectionId/hidden/:videoId - Hide a video
             const hideVideoMatch = path.match(/^\/api\/collections\/([^/]+)\/hidden\/([^/]+)$/);
             if (hideVideoMatch && req.method === 'POST') {
-                return handleApiRequest(() => {
+                return handleApiRequest(req, () => {
                     const collectionId = hideVideoMatch[1];
                     const videoId = hideVideoMatch[2];
                     return hiddenRoutes.hideVideo(hiddenDeps, collectionId, videoId);
@@ -232,7 +217,7 @@ const server = Bun.serve({
             // DELETE /api/collections/:collectionId/hidden/:videoId - Unhide a video
             const unhideVideoMatch = path.match(/^\/api\/collections\/([^/]+)\/hidden\/([^/]+)$/);
             if (unhideVideoMatch && req.method === 'DELETE') {
-                return handleApiRequest(() => {
+                return handleApiRequest(req, () => {
                     const collectionId = unhideVideoMatch[1];
                     const videoId = unhideVideoMatch[2];
                     return hiddenRoutes.unhideVideo(hiddenDeps, collectionId, videoId);
@@ -244,7 +229,7 @@ const server = Bun.serve({
             // GET /api/collections/:collectionId/starred - Get starred video IDs
             const getStarredMatch = path.match(/^\/api\/collections\/([^/]+)\/starred$/);
             if (getStarredMatch && req.method === 'GET') {
-                return handleApiRequest(() => {
+                return handleApiRequest(req, () => {
                     const collectionId = getStarredMatch[1];
                     return starredRoutes.getStarredVideos(starredDeps, collectionId);
                 });
@@ -253,7 +238,7 @@ const server = Bun.serve({
             // POST /api/collections/:collectionId/starred/:videoId - Star a video
             const starVideoMatch = path.match(/^\/api\/collections\/([^/]+)\/starred\/([^/]+)$/);
             if (starVideoMatch && req.method === 'POST') {
-                return handleApiRequest(() => {
+                return handleApiRequest(req, () => {
                     const collectionId = starVideoMatch[1];
                     const videoId = starVideoMatch[2];
                     return starredRoutes.starVideo(starredDeps, collectionId, videoId);
@@ -263,7 +248,7 @@ const server = Bun.serve({
             // DELETE /api/collections/:collectionId/starred/:videoId - Unstar a video
             const unstarVideoMatch = path.match(/^\/api\/collections\/([^/]+)\/starred\/([^/]+)$/);
             if (unstarVideoMatch && req.method === 'DELETE') {
-                return handleApiRequest(() => {
+                return handleApiRequest(req, () => {
                     const collectionId = unstarVideoMatch[1];
                     const videoId = unstarVideoMatch[2];
                     return starredRoutes.unstarVideo(starredDeps, collectionId, videoId);
@@ -275,7 +260,7 @@ const server = Bun.serve({
             // POST /api/videos/:videoId/insights - Start or retrieve AI insights
             const startInsightsMatch = path.match(/^\/api\/videos\/([^/]+)\/insights$/);
             if (startInsightsMatch && req.method === 'POST') {
-                return handleApiRequest(async () => {
+                return handleApiRequest(req, async () => {
                     const videoId = startInsightsMatch[1];
                     const body = await req.json();
                     return insightsRoutes.startInsightsHandler(insightsDeps, videoId, body);
@@ -285,7 +270,7 @@ const server = Bun.serve({
             // GET /api/videos/:videoId/insights - Poll for insights results
             const getInsightsMatch = path.match(/^\/api\/videos\/([^/]+)\/insights$/);
             if (getInsightsMatch && req.method === 'GET') {
-                return handleApiRequest(() => {
+                return handleApiRequest(req, () => {
                     const videoId = getInsightsMatch[1];
                     return insightsRoutes.getInsightsHandler(insightsDeps, videoId);
                 });
@@ -294,29 +279,36 @@ const server = Bun.serve({
             // DELETE /api/videos/:videoId/insights - Cancel ongoing research
             const cancelInsightsMatch = path.match(/^\/api\/videos\/([^/]+)\/insights$/);
             if (cancelInsightsMatch && req.method === 'DELETE') {
-                return handleApiRequest(() => {
+                return handleApiRequest(req, () => {
                     const videoId = cancelInsightsMatch[1];
                     return insightsRoutes.cancelInsightsHandler(insightsDeps, videoId);
                 });
+            }
+
+            // GET /api/videos/:videoId/description - Load a video description on demand
+            const descriptionMatch = path.match(/^\/api\/videos\/([^/]+)\/description$/);
+            if (descriptionMatch && req.method === 'GET') {
+                const videoId = descriptionMatch[1];
+                return handleApiRequest(req, () => descriptionsRoute.getVideoDescription(descriptionsDeps, videoId));
             }
 
             // ==================== CACHE API ====================
 
             // GET /api/cache/stats - Get cache statistics
             if (path === '/api/cache/stats' && req.method === 'GET') {
-                return handleApiRequest(() => 
+                return handleApiRequest(req, () => 
                     cacheRoutes.getCacheStats(cacheDeps)
                 );
             }
             
             // DELETE /api/cache - Clear the image cache
             if (path === '/api/cache' && req.method === 'DELETE') {
-                return handleApiRequest(() => 
+                return handleApiRequest(req, () => 
                     cacheRoutes.clearCacheHandler(cacheDeps)
                 );
             }
 
-            return withCors(Response.json({ error: 'Not found' }, { status: 404 }));
+            return finalizeApiResponse(req, Response.json({ error: 'Not found' }, { status: 404 }));
         }
 
         // ==================== IMAGE PROXY ROUTES ====================

@@ -32,7 +32,7 @@ describe('Collections API', () => {
             expect(data).toEqual([]);
         });
 
-        test('returns all collections', async () => {
+        test('returns all collections metadata', async () => {
             const collections = [
                 createMockCollection({ name: 'Tech' }),
                 createMockCollection({ name: 'Movies' }),
@@ -44,11 +44,21 @@ describe('Collections API', () => {
 
             expect(response.status).toBe(200);
             expect(data).toHaveLength(2);
-            expect(data[0].name).toBe('Tech');
-            expect(data[1].name).toBe('Movies');
+            expect(data[0]).toMatchObject({
+                id: collections[0].id,
+                name: 'Tech',
+                createdAt: collections[0].createdAt,
+                channelCount: 0,
+            });
+            expect(data[1]).toMatchObject({
+                id: collections[1].id,
+                name: 'Movies',
+                createdAt: collections[1].createdAt,
+                channelCount: 0,
+            });
         });
 
-        test('returns collections with their channels', async () => {
+        test('returns channel counts without nested channel data', async () => {
             const collection = createMockCollection({
                 name: 'Tech',
                 channels: [
@@ -61,11 +71,11 @@ describe('Collections API', () => {
             const response = await listCollections(deps);
             const data = await response.json();
 
-            expect(data[0].channels).toHaveLength(2);
-            expect(data[0].channels[0].handle).toBe('@GitHub');
+            expect(data[0].channelCount).toBe(2);
+            expect(data[0].channels).toBeUndefined();
         });
 
-        test('returns collection metadata (id, name, createdAt)', async () => {
+        test('returns collection metadata (id, name, createdAt, channelCount)', async () => {
             const collection = createMockCollection({
                 name: 'Test',
                 createdAt: '2024-01-15T10:00:00.000Z',
@@ -78,6 +88,27 @@ describe('Collections API', () => {
             expect(data[0].id).toBeDefined();
             expect(data[0].name).toBe('Test');
             expect(data[0].createdAt).toBe('2024-01-15T10:00:00.000Z');
+            expect(data[0].channelCount).toBe(0);
+        });
+
+        test('returns only metadata fields with no nested channel or video data', async () => {
+            const collection = createMockCollection({
+                name: 'Tech',
+                channels: [createMockStoredChannel({ handle: '@GitHub' })],
+            });
+            deps.store = createInMemoryStore({ collections: [collection] });
+
+            const response = await listCollections(deps);
+            const data = await response.json();
+
+            expect(data[0]).toEqual({
+                id: collection.id,
+                name: 'Tech',
+                createdAt: collection.createdAt,
+                channelCount: 1,
+            });
+            expect(Object.keys(data[0]).sort()).toEqual(['channelCount', 'createdAt', 'id', 'name']);
+            expect(data[0].channels).toBeUndefined();
         });
     });
 

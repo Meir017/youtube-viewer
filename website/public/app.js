@@ -52,6 +52,8 @@ let shortsVirtualScroll = null;
 
 // Video data registry for click handlers (avoids inline JSON escaping issues)
 const videoDataRegistry = new Map();
+const descriptionCache = new Map();
+const descriptionRequestCache = new Map();
 
 // Virtual Scroll Grid Class
 class VirtualScrollGrid {
@@ -1518,8 +1520,8 @@ function renderVideoCard(video) {
         dateDisplay = `📅 ${escapeHtml(publishedTime)}`;
     }
     
-    // Enriched indicator (shows if video has description data)
-    const enrichedBadge = description ? '<span class="enriched-badge" title="Click for full description">📝</span>' : '';
+    // Enriched indicator (shows if video has publish date enrichment data)
+    const enrichedBadge = publishDate ? '<span class="enriched-badge" title="Click for full description">📝</span>' : '';
     
     // Hide/Unhide button based on current view
     const isHidden = hiddenVideoIds.has(videoId);
@@ -1532,7 +1534,7 @@ function renderVideoCard(video) {
     const starButton = `<button class="star-video-btn${isStarred ? ' starred' : ''}" onclick="${isStarred ? 'unstarVideo' : 'starVideo'}('${videoId}', event)" title="${isStarred ? 'Unstar video' : 'Star video'}">${isStarred ? '⭐' : '☆'}</button>`;
     
     return `
-        <article class="video-card${description ? ' is-enriched' : ''}${isStarred ? ' is-starred' : ''}" onclick="openVideoModalById('${videoId}')" style="cursor: pointer;">
+        <article class="video-card${publishDate ? ' is-enriched' : ''}${isStarred ? ' is-starred' : ''}" onclick="openVideoModalById('${videoId}')" style="cursor: pointer;">
             <div class="video-thumbnail">
                 ${showChannelIndicator ? `<span class="channel-indicator" style="--channel-color: ${channelColor};">${avatarUrl ? `<img src="${avatarUrl}" alt="" class="channel-indicator-icon">` : ''}${escapeHtml(channelTitle)}</span>` : ''}
                 <img src="${thumbnail}" alt="${escapeHtml(title)}" loading="lazy">
@@ -1601,6 +1603,60 @@ function linkifyText(text) {
     // Then convert URLs to links
     const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
     return escaped.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
+function renderModalDescription(description) {
+    if (description) {
+        videoModalDescription.innerHTML = linkifyText(description);
+        videoModalDescription.hidden = false;
+    } else {
+        videoModalDescription.innerHTML = '';
+        videoModalDescription.hidden = true;
+    }
+}
+
+function getCachedVideoDescription(videoId, fallbackDescription) {
+    if (descriptionCache.has(videoId)) {
+        return descriptionCache.get(videoId);
+    }
+    return typeof fallbackDescription === 'string' ? fallbackDescription : undefined;
+}
+
+async function loadVideoDescription(videoId) {
+    if (descriptionCache.has(videoId)) {
+        return descriptionCache.get(videoId);
+    }
+
+    if (descriptionRequestCache.has(videoId)) {
+        return descriptionRequestCache.get(videoId);
+    }
+
+    const request = fetch(`${API_BASE}/videos/${encodeURIComponent(videoId)}/description`)
+        .then(async (response) => {
+            if (!response.ok) {
+                throw new Error(`Request failed with status ${response.status}`);
+            }
+
+            const data = await response.json();
+            const description = typeof data.description === 'string' ? data.description : null;
+            descriptionCache.set(videoId, description);
+            descriptionRequestCache.delete(videoId);
+
+            const videoData = videoDataRegistry.get(videoId);
+            if (videoData) {
+                videoData.description = description || undefined;
+            }
+
+            return description;
+        })
+        .catch((error) => {
+            descriptionRequestCache.delete(videoId);
+            console.error('Failed to load video description:', error);
+            return null;
+        });
+
+    descriptionRequestCache.set(videoId, request);
+    return request;
 }
 
 function showLoading(show) {
@@ -1672,6 +1728,7 @@ function openVideoModal(videoData) {
     videoModalTitle.textContent = title || 'Untitled';
     videoModalChannel.textContent = channelTitle ? `📺 ${channelTitle}` : '';
     videoModalViews.textContent = viewCount ? `👁️ ${viewCount}` : '';
+    currentModalVideoId = videoId;
     
     // Date display: show exact date with relative time if enriched
     if (publishDate) {
@@ -1681,14 +1738,22 @@ function openVideoModal(videoData) {
     } else {
         videoModalDate.textContent = '';
     }
-    
-    // Description display (if enriched)
-    if (description) {
-        videoModalDescription.innerHTML = linkifyText(description);
-        videoModalDescription.hidden = false;
+
+    const cachedDescription = getCachedVideoDescription(videoId, description);
+    if (cachedDescription !== undefined) {
+        if (typeof description === 'string' && !descriptionCache.has(videoId)) {
+            descriptionCache.set(videoId, description);
+        }
+        renderModalDescription(cachedDescription);
     } else {
-        videoModalDescription.innerHTML = '';
-        videoModalDescription.hidden = true;
+        videoModalDescription.textContent = 'Loading description...';
+        videoModalDescription.hidden = false;
+        loadVideoDescription(videoId).then((fetchedDescription) => {
+            if (currentModalVideoId !== videoId) {
+                return;
+            }
+            renderModalDescription(fetchedDescription);
+        });
     }
     
     videoModalLink.href = youtubeUrl;
@@ -1696,12 +1761,19 @@ function openVideoModal(videoData) {
     // Reset insights section
     videoModalInsights.hidden = true;
     insightsContent.innerHTML = `<div class="insights-loading"><img src="/copilot-loading.svg" alt="Loading insights..." class="insights-loading-svg"><span class="insights-loading-text">Copilot is researching this video…</span></div>`;
-    currentModalVideoId = videoId;
     
     // Start 5-second timer for AI insights
     clearInsightsTimers();
     insightsTimer = setTimeout(() => {
-        triggerInsightsResearch(videoId, { title, channelTitle, description, duration: videoData.duration, publishedTime, publishDate, isShort });
+        triggerInsightsResearch(videoId, {
+            title,
+            channelTitle,
+            description: descriptionCache.has(videoId) ? descriptionCache.get(videoId) ?? undefined : description,
+            duration: videoData.duration,
+            publishedTime,
+            publishDate,
+            isShort,
+        });
     }, 5000);
     
     // Show modal

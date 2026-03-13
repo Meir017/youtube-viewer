@@ -1,12 +1,22 @@
 import { fetchVideoDetails } from '../generator/api';
 import { createLogger } from '../generator/logger.ts';
 import type { WebChannelData } from './channel-processor';
+import { createDescriptionsStore, type DescriptionsStoreInterface } from './descriptions-store';
 
 const log = createLogger('enrichment');
+const descriptionsStore = createDescriptionsStore();
 
 // Enrichment settings
 const ENRICH_DELAY_MS = 1500;
 const ENRICH_CONCURRENCY = 10;
+
+export interface EnrichmentRuntimeDeps {
+    fetchVideoDetails?: typeof fetchVideoDetails;
+    descriptionsStore?: DescriptionsStoreInterface;
+    sleep?: (ms: number) => Promise<void>;
+    delayMs?: number;
+    concurrency?: number;
+}
 
 export interface EnrichmentJob {
     collectionId: string;
@@ -120,7 +130,8 @@ export function getEnrichmentStatus(collection: Collection): EnrichmentStatus {
  */
 export function startEnrichment(
     collection: Collection,
-    saveCallback: () => Promise<void>
+    saveCallback: () => Promise<void>,
+    runtimeDeps: EnrichmentRuntimeDeps = {}
 ): { started: boolean; message?: string; job: EnrichmentJob } {
     const collectionId = collection.id;
     
@@ -165,8 +176,16 @@ export function startEnrichment(
     };
     enrichmentJobs.set(collectionId, job);
 
+    const effectiveRuntimeDeps: Required<EnrichmentRuntimeDeps> = {
+        fetchVideoDetails: runtimeDeps.fetchVideoDetails ?? fetchVideoDetails,
+        descriptionsStore: runtimeDeps.descriptionsStore ?? descriptionsStore,
+        sleep: runtimeDeps.sleep ?? ((ms: number) => Bun.sleep(ms)),
+        delayMs: runtimeDeps.delayMs ?? ENRICH_DELAY_MS,
+        concurrency: runtimeDeps.concurrency ?? ENRICH_CONCURRENCY,
+    };
+
     // Start enrichment in background (don't await)
-    runEnrichment(collection, job, saveCallback).catch(err => {
+    runEnrichment(collection, job, saveCallback, effectiveRuntimeDeps).catch(err => {
         log.error(`Enrichment error for collection ${collectionId}:`, err);
         job.status = 'error';
         job.error = err.message;
@@ -181,10 +200,13 @@ export function startEnrichment(
 async function runEnrichment(
     collection: Collection,
     job: EnrichmentJob,
-    saveCallback: () => Promise<void>
+    saveCallback: () => Promise<void>,
+    runtimeDeps: Required<EnrichmentRuntimeDeps>
 ): Promise<void> {
     const collectionId = collection.id;
-    log.info(`Starting enrichment for collection ${collectionId} (concurrency: ${ENRICH_CONCURRENCY}, delay: ${ENRICH_DELAY_MS}ms)`);
+    const delayMs = Math.max(0, runtimeDeps.delayMs);
+    const concurrency = Math.max(1, runtimeDeps.concurrency);
+    log.info(`Starting enrichment for collection ${collectionId} (concurrency: ${concurrency}, delay: ${delayMs}ms)`);
 
     // Collect all videos that need enrichment
     const videosToEnrich: Array<{ channelIndex: number; videoIndex: number; videoId: string }> = [];
@@ -237,14 +259,16 @@ async function runEnrichment(
         const { channelIndex, videoIndex, videoId } = videosToEnrich[index];
         
         try {
-            const details = await fetchVideoDetails(videoId);
+            const details = await runtimeDeps.fetchVideoDetails(videoId);
             
             // Update video in collection
             const channel = collection.channels[channelIndex];
             const video = channel.data?.videos[videoIndex];
             if (video) {
                 video.publishDate = details.publishDate ?? undefined;
-                video.description = details.description ?? undefined;
+                if (details.description) {
+                    await runtimeDeps.descriptionsStore.set(video.videoId, details.description);
+                }
             }
             
             job.enriched++;
@@ -275,7 +299,7 @@ async function runEnrichment(
     async function worker(workerId: number): Promise<void> {
         // Stagger worker startup to avoid thundering herd
         if (workerId > 0) {
-            await Bun.sleep(Math.floor(ENRICH_DELAY_MS / ENRICH_CONCURRENCY) * workerId);
+            await runtimeDeps.sleep(Math.floor(delayMs / concurrency) * workerId);
         }
 
         while (true) {
@@ -287,13 +311,13 @@ async function runEnrichment(
             
             // Per-worker delay between requests
             if (!rateLimited) {
-                await Bun.sleep(ENRICH_DELAY_MS);
+                await runtimeDeps.sleep(delayMs);
             }
         }
     }
 
     // Start concurrent workers
-    const workerCount = Math.min(ENRICH_CONCURRENCY, videosToEnrich.length);
+    const workerCount = Math.min(concurrency, videosToEnrich.length);
     log.info(`Starting ${workerCount} concurrent workers`);
     
     const workers: Promise<void>[] = [];
