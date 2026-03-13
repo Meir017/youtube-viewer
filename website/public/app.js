@@ -32,6 +32,7 @@ let currentSort = { by: 'date', order: 'asc' };
 let currentMaxAge = 30;
 let minDurationMinutes = 0;
 let maxDurationMinutes = Infinity;
+let ageRangeDays = Infinity; // Client-side age range filter (Infinity = show all)
 
 // Hidden videos state
 let hiddenVideoIds = new Set();
@@ -201,6 +202,9 @@ const maxAgeInput = document.getElementById('maxAgeInput');
 const applyMaxAgeBtn = document.getElementById('applyMaxAgeBtn');
 const minDurationInput = document.getElementById('minDurationInput');
 const maxDurationInput = document.getElementById('maxDurationInput');
+const agePresetButtons = document.querySelectorAll('.age-preset-btn');
+const customAgeDaysInput = document.getElementById('customAgeDaysInput');
+const applyCustomAgeBtn = document.getElementById('applyCustomAgeBtn');
 
 // Refresh button
 const refreshAllBtn = document.getElementById('refreshAllBtn');
@@ -230,6 +234,15 @@ document.addEventListener('DOMContentLoaded', () => {
     applyMaxAgeBtn.addEventListener('click', handleApplyMaxAge);
     minDurationInput.addEventListener('input', handleDurationFilter);
     maxDurationInput.addEventListener('input', handleDurationFilter);
+    
+    // Age range filter listeners
+    agePresetButtons.forEach(btn => {
+        btn.addEventListener('click', () => handleAgePreset(btn));
+    });
+    applyCustomAgeBtn.addEventListener('click', handleCustomAgeApply);
+    customAgeDaysInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleCustomAgeApply();
+    });
     
     // Collection modal listeners
     addCollectionBtn.addEventListener('click', () => {
@@ -313,6 +326,18 @@ function parseDateAge(dateStr) {
     return num * (multipliers[unit] || 1);
 }
 
+// Get video age in days, using publishDate (exact) if available, else publishedTime (relative)
+function getVideoAgeDays(video) {
+    if (video.publishDate) {
+        const pubDate = new Date(video.publishDate);
+        if (!isNaN(pubDate.getTime())) {
+            return (Date.now() - pubDate.getTime()) / (1000 * 60 * 60 * 24);
+        }
+    }
+    const ageSec = parseDateAge(video.publishedTime);
+    return ageSec === Infinity ? Infinity : ageSec / 86400;
+}
+
 // Sort videos
 function sortVideos(videos) {
     const sorted = [...videos];
@@ -389,6 +414,29 @@ function handleDurationFilter() {
     
     renderVideos();
     renderShorts();
+}
+
+// Handle age range preset button click
+function handleAgePreset(btn) {
+    const days = parseInt(btn.dataset.days);
+    ageRangeDays = days === 0 ? Infinity : days;
+    
+    agePresetButtons.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    customAgeDaysInput.value = '';
+    
+    renderVideos();
+}
+
+// Handle custom age range apply
+function handleCustomAgeApply() {
+    const days = parseInt(customAgeDaysInput.value);
+    if (isNaN(days) || days <= 0) return;
+    
+    ageRangeDays = days;
+    agePresetButtons.forEach(b => b.classList.remove('active'));
+    
+    renderVideos();
 }
 
 // Handle max-age apply button (reloads catalog from server)
@@ -771,7 +819,7 @@ function renderEnrichmentPanel() {
     `;
 }
 
-// Filter videos based on active channel, search, and duration
+// Filter videos based on active channel, search, duration, and age range
 function filterVideos(videos) {
     const minDurationSec = minDurationMinutes * 60;
     const maxDurationSec = maxDurationMinutes === Infinity ? Infinity : maxDurationMinutes * 60;
@@ -785,6 +833,9 @@ function filterVideos(videos) {
         const matchesMinDuration = durationSec >= minDurationSec;
         const matchesMaxDuration = maxDurationSec === Infinity || durationSec <= maxDurationSec;
         
+        // Age range filter
+        const matchesAge = ageRangeDays === Infinity || getVideoAgeDays(video) <= ageRangeDays;
+        
         // Hidden videos filter
         const isHidden = hiddenVideoIds.has(video.videoId);
         const matchesHiddenFilter = showHiddenVideos ? isHidden : !isHidden;
@@ -793,7 +844,7 @@ function filterVideos(videos) {
         const isStarred = starredVideoIds.has(video.videoId);
         const matchesStarredFilter = showStarredVideos ? isStarred : true;
         
-        return matchesChannel && matchesSearch && matchesMinDuration && matchesMaxDuration && !video.isShort && matchesHiddenFilter && matchesStarredFilter;
+        return matchesChannel && matchesSearch && matchesMinDuration && matchesMaxDuration && matchesAge && !video.isShort && matchesHiddenFilter && matchesStarredFilter;
     });
 }
 

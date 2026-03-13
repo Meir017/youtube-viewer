@@ -147,6 +147,22 @@
                         <span class="filter-unit">min</span>
                     </div>
                 </div>
+                <div class="age-range-filter">
+                    <span class="age-range-label">📅 Age:</span>
+                    <div class="age-preset-buttons">
+                        <button class="age-preset-btn" data-days="7">1W</button>
+                        <button class="age-preset-btn" data-days="30">1M</button>
+                        <button class="age-preset-btn" data-days="60">2M</button>
+                        <button class="age-preset-btn" data-days="90">3M</button>
+                        <button class="age-preset-btn" data-days="180">6M</button>
+                        <button class="age-preset-btn" data-days="365">1Y</button>
+                        <button class="age-preset-btn active" data-days="0">All</button>
+                    </div>
+                    <div class="age-custom-group">
+                        <input type="number" id="customAgeDaysInput" min="1" placeholder="days">
+                        <button id="applyCustomAgeBtn" class="age-apply-btn">Apply</button>
+                    </div>
+                </div>
                 <div class="sort-buttons">
                     <button class="sort-btn" data-sort="default" data-order="desc">
                         <span>Default</span>
