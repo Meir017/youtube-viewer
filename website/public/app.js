@@ -2085,13 +2085,32 @@ function renderInsightsProgress(data) {
     const loadingText = insightsContent.querySelector('.insights-loading-text');
     if (!loadingText) return;
 
-    // Update the loading text with the progress message
+    // Icon mapping
     const icon = data.type === 'tool_start' ? '🔍' :
                  data.type === 'tool_complete' ? '✅' :
+                 data.type === 'tool_failed' ? '⚠️' :
                  data.type === 'subagent_start' ? '🤖' :
                  data.type === 'subagent_complete' ? '✅' :
-                 data.type === 'intent' ? '💭' : '⏳';
+                 data.type === 'intent' ? '💭' :
+                 data.type === 'turn_start' ? '▶️' :
+                 data.type === 'turn_end' ? '⏹️' :
+                 data.type === 'usage' ? '📊' : '⏳';
     loadingText.textContent = `${icon} ${data.message}`;
+
+    // Format timestamp as HH:MM:SS
+    let timeStr = '';
+    if (data.timestamp) {
+        const d = new Date(data.timestamp);
+        timeStr = d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    // Build detail text
+    let detail = '';
+    if (data.type === 'usage' && data.model) {
+        detail = ` (${data.model})`;
+    } else if (data.type === 'tool_failed') {
+        detail = ' — failed';
+    }
 
     // Add progress entry to the log
     let progressLog = insightsContent.querySelector('.insights-progress-log');
@@ -2101,8 +2120,17 @@ function renderInsightsProgress(data) {
         insightsContent.appendChild(progressLog);
     }
     const entry = document.createElement('div');
-    entry.className = 'insights-progress-entry';
-    entry.textContent = `${icon} ${data.message}`;
+    entry.className = `insights-progress-entry${data.type === 'tool_failed' ? ' progress-warn' : ''}${data.type === 'turn_start' || data.type === 'turn_end' ? ' progress-turn' : ''}${data.type === 'usage' ? ' progress-usage' : ''}`;
+    if (timeStr) {
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'progress-time';
+        timeSpan.textContent = timeStr;
+        entry.appendChild(timeSpan);
+    }
+    const msgSpan = document.createElement('span');
+    msgSpan.className = 'progress-msg';
+    msgSpan.textContent = `${icon} ${data.message}${detail}`;
+    entry.appendChild(msgSpan);
     progressLog.appendChild(entry);
     // Scroll the insights content pane to show latest progress
     insightsContent.scrollTop = insightsContent.scrollHeight;

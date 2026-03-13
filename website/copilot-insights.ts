@@ -291,15 +291,18 @@ When researching a movie or TV trailer, finding the IMDB link is your TOP PRIORI
     });
 
     // Stream progress events to the client
+    let turnCount = 0;
     const unsubscribeEvents = session.on((event: SessionEvent) => {
         logSessionEvent(videoId, event);
 
         try {
+            const ts = new Date().toISOString();
             switch (event.type) {
                 case "assistant.intent":
                     controller.enqueue(sseMessage('progress', {
                         type: 'intent',
                         message: event.data.intent,
+                        timestamp: ts,
                     }));
                     break;
                 case "tool.execution_start":
@@ -307,21 +310,27 @@ When researching a movie or TV trailer, finding the IMDB link is your TOP PRIORI
                         type: 'tool_start',
                         message: `Using ${event.data.toolName}…`,
                         tool: event.data.toolName,
+                        timestamp: ts,
                     }));
                     break;
-                case "tool.execution_complete":
+                case "tool.execution_complete": {
+                    const toolName = (event.data as any).toolName ?? event.data.toolCallId;
+                    const success = event.data.success;
                     controller.enqueue(sseMessage('progress', {
-                        type: 'tool_complete',
-                        message: `Finished ${(event.data as any).toolName ?? 'tool'}`,
-                        tool: (event.data as any).toolName ?? event.data.toolCallId,
-                        success: event.data.success,
+                        type: success ? 'tool_complete' : 'tool_failed',
+                        message: success ? `Finished ${toolName}` : `Failed: ${toolName}`,
+                        tool: toolName,
+                        success,
+                        timestamp: ts,
                     }));
                     break;
+                }
                 case "subagent.started":
                     controller.enqueue(sseMessage('progress', {
                         type: 'subagent_start',
                         message: `Sub-agent: ${event.data.agentName}`,
                         agent: event.data.agentName,
+                        timestamp: ts,
                     }));
                     break;
                 case "subagent.completed":
@@ -329,12 +338,34 @@ When researching a movie or TV trailer, finding the IMDB link is your TOP PRIORI
                         type: 'subagent_complete',
                         message: `Sub-agent finished: ${event.data.agentName}`,
                         agent: event.data.agentName,
+                        timestamp: ts,
                     }));
                     break;
                 case "assistant.turn_start":
+                    turnCount++;
                     controller.enqueue(sseMessage('progress', {
                         type: 'turn_start',
-                        message: 'Analyzing…',
+                        message: `Turn ${turnCount} started`,
+                        turn: turnCount,
+                        timestamp: ts,
+                    }));
+                    break;
+                case "assistant.turn_end":
+                    controller.enqueue(sseMessage('progress', {
+                        type: 'turn_end',
+                        message: `Turn ${turnCount} ended`,
+                        turn: turnCount,
+                        timestamp: ts,
+                    }));
+                    break;
+                case "assistant.usage":
+                    controller.enqueue(sseMessage('progress', {
+                        type: 'usage',
+                        message: `Tokens: ${event.data.inputTokens ?? '?'} in / ${event.data.outputTokens ?? '?'} out`,
+                        model: event.data.model,
+                        inputTokens: event.data.inputTokens,
+                        outputTokens: event.data.outputTokens,
+                        timestamp: ts,
                     }));
                     break;
             }

@@ -1708,21 +1708,53 @@ body {
     margin-top: 12px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
 }
 
 .insights-progress-entry {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     color: rgba(255, 255, 255, 0.45);
-    padding: 3px 0;
+    padding: 2px 0;
     animation: progressFadeIn 0.3s ease-out;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.insights-progress-entry:last-child {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.progress-time {
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 0.7rem;
+    flex-shrink: 0;
+    min-width: 60px;
+}
+
+.insights-progress-entry:last-child .progress-time {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.progress-msg {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.insights-progress-entry:last-child {
-    color: rgba(255, 255, 255, 0.65);
+.insights-progress-entry.progress-warn {
+    color: rgba(255, 180, 70, 0.7);
+}
+
+.insights-progress-entry.progress-turn {
+    color: rgba(100, 180, 255, 0.55);
+    font-weight: 500;
+}
+
+.insights-progress-entry.progress-usage {
+    color: rgba(180, 140, 255, 0.5);
+    font-size: 0.7rem;
 }
 
 @keyframes progressFadeIn {
