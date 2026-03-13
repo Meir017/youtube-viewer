@@ -1950,6 +1950,24 @@ async function triggerInsightsResearch(videoId, meta, customPrompt) {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let eventType = '';
+        let eventData = '';
+
+        function processLines(lines) {
+            for (const line of lines) {
+                if (line.startsWith('event: ')) {
+                    eventType = line.slice(7);
+                } else if (line.startsWith('data: ')) {
+                    eventData = line.slice(6);
+                } else if (line === '' && eventType && eventData) {
+                    if (currentModalVideoId !== videoId) return false;
+                    handleInsightsEvent(eventType, JSON.parse(eventData));
+                    eventType = '';
+                    eventData = '';
+                }
+            }
+            return true;
+        }
 
         while (true) {
             const { done, value } = await reader.read();
@@ -1959,21 +1977,18 @@ async function triggerInsightsResearch(videoId, meta, customPrompt) {
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
 
-            let eventType = '';
-            let eventData = '';
+            if (!processLines(lines)) return;
+        }
 
-            for (const line of lines) {
-                if (line.startsWith('event: ')) {
-                    eventType = line.slice(7);
-                } else if (line.startsWith('data: ')) {
-                    eventData = line.slice(6);
-                } else if (line === '' && eventType && eventData) {
-                    // Process the complete SSE message
-                    if (currentModalVideoId !== videoId) return;
-                    handleInsightsEvent(eventType, JSON.parse(eventData));
-                    eventType = '';
-                    eventData = '';
-                }
+        // Flush remaining buffer after stream closes
+        if (buffer.length > 0) {
+            const lines = buffer.split('\n');
+            processLines(lines);
+        }
+        // Process any final pending event
+        if (eventType && eventData) {
+            if (currentModalVideoId === videoId) {
+                handleInsightsEvent(eventType, JSON.parse(eventData));
             }
         }
     } catch (err) {
@@ -2021,7 +2036,8 @@ function renderInsightsProgress(data) {
     entry.className = 'insights-progress-entry';
     entry.textContent = `${icon} ${data.message}`;
     progressLog.appendChild(entry);
-    progressLog.scrollTop = progressLog.scrollHeight;
+    // Scroll the insights content pane to show latest progress
+    insightsContent.scrollTop = insightsContent.scrollHeight;
 }
 
 function renderInsightsContent(markdown) {

@@ -1632,6 +1632,9 @@ body {
     font-size: 0.9rem;
     color: rgba(255, 255, 255, 0.85);
     line-height: 1.7;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
 }
 
 .insights-content.insights-loaded {
@@ -1691,8 +1694,6 @@ body {
 /* Insights Streaming Progress */
 .insights-progress-log {
     margin-top: 12px;
-    max-height: 200px;
-    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 4px;
