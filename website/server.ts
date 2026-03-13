@@ -27,6 +27,12 @@ const PUBLIC_DIR = join(import.meta.dir, 'public');
 const store: StoreInterface = createStore();
 const descriptionsStore = createDescriptionsStore();
 
+// Pre-warm caches in background on startup
+Promise.all([
+    store.warmup?.(),
+    descriptionsStore.warmup?.(),
+]).catch(err => log.error('Cache warmup error:', err));
+
 const channelProcessor: channelsRoutes.ChannelProcessor = {
     processChannelForWeb,
 };

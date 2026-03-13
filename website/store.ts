@@ -21,6 +21,8 @@ export interface ChannelsStore {
 export interface StoreInterface {
     load(): Promise<ChannelsStore>;
     save(store: ChannelsStore): Promise<void>;
+    /** Pre-warm the cache by loading from disk. */
+    warmup?(): Promise<void>;
 }
 
 function stripDescriptionsFromChannels(
@@ -154,15 +156,30 @@ export async function ensureDataDir(): Promise<void> {
 
 /**
  * Create a store instance (for dependency injection).
- * This allows tests to provide mock implementations.
+ * Uses in-memory caching: first load() reads from disk, subsequent loads return cached data.
+ * save() writes through to disk and updates the cache.
  */
 export function createStore(
     dataFile: string = DATA_FILE,
     targetDescriptionsStore: DescriptionsStoreInterface = descriptionsStore
 ): StoreInterface {
+    let cached: ChannelsStore | null = null;
+
     return {
-        load: () => loadStore(dataFile, targetDescriptionsStore),
-        save: (store) => saveStore(store, dataFile, targetDescriptionsStore),
+        async load() {
+            if (cached) return cached;
+            cached = await loadStore(dataFile, targetDescriptionsStore);
+            return cached;
+        },
+        async save(store) {
+            await saveStore(store, dataFile, targetDescriptionsStore);
+            cached = store;
+        },
+        async warmup() {
+            if (!cached) {
+                cached = await loadStore(dataFile, targetDescriptionsStore);
+            }
+        },
     };
 }
 
