@@ -890,14 +890,13 @@ async function loadCollectionChannels(collectionId) {
         channels = await response.json();
         processChannelData();
         
-        // Load hidden videos for this collection
-        await loadHiddenVideos();
-        
-        // Load starred videos for this collection
-        await loadStarredVideos();
-        
-        // Fetch enrichment status
-        enrichmentStatus = await fetchEnrichmentStatus();
+        // Load hidden videos, starred videos, and enrichment status in parallel
+        const [, , enrichResult] = await Promise.all([
+            loadHiddenVideos(),
+            loadStarredVideos(),
+            fetchEnrichmentStatus(),
+        ]);
+        enrichmentStatus = enrichResult;
         
         // If enrichment is running, start polling
         if (enrichmentStatus?.status === 'running') {
