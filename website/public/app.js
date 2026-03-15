@@ -1634,10 +1634,10 @@ function renderVideoCard(video) {
     const videoData = { videoId, title, viewCount, publishedTime, publishDate, description, channelTitle };
     videoDataRegistry.set(videoId, videoData);
     
-    // Date display: show exact date with relative time in parentheses if enriched
+    // Date display: show exact date if enriched, otherwise relative time
     let dateDisplay = '';
     if (publishDate) {
-        dateDisplay = `📅 ${escapeHtml(publishDate)}${publishedTime ? ` (${escapeHtml(publishedTime)})` : ''}`;
+        dateDisplay = `📅 ${escapeHtml(publishDate)}`;
     } else if (publishedTime) {
         dateDisplay = `📅 ${escapeHtml(publishedTime)}`;
     }
@@ -1852,9 +1852,9 @@ function openVideoModal(videoData) {
     videoModalViews.textContent = viewCount ? `👁️ ${viewCount}` : '';
     currentModalVideoId = videoId;
     
-    // Date display: show exact date with relative time if enriched
+    // Date display: show exact date if enriched, otherwise relative time
     if (publishDate) {
-        videoModalDate.textContent = `📅 ${publishDate}${publishedTime ? ` (${publishedTime})` : ''}`;
+        videoModalDate.textContent = `📅 ${publishDate}`;
     } else if (publishedTime) {
         videoModalDate.textContent = `📅 ${publishedTime}`;
     } else {
