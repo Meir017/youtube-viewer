@@ -270,6 +270,35 @@ export async function generateHtmlPage(channels: ChannelData[], outputPath: stri
             gap: 5px;
         }
         
+        .imdb-badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(0,0,0,0.85);
+            color: #f5c518;
+            padding: 3px 7px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            z-index: 2;
+        }
+        
+        .imdb-genres {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 6px;
+        }
+        
+        .imdb-genre-tag {
+            background: rgba(245,197,24,0.15);
+            color: rgba(245,197,24,0.9);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+        
         .video-description {
             margin-top: 10px;
             padding-top: 10px;
@@ -771,6 +800,7 @@ export async function generateHtmlPage(channels: ChannelData[], outputPath: stri
                             <img src="https://i.ytimg.com/vi/${escapeHtml(video.videoId)}/mqdefault.jpg" alt="${escapeHtml(video.title)}" loading="lazy">
                         </a>
                         ${video.duration ? `<span class="video-duration">${escapeHtml(video.duration)}</span>` : ''}
+                        ${video.imdb?.averageRating ? `<span class="imdb-badge" title="IMDB ${escapeHtml(video.imdb.averageRating)}/10">⭐ ${escapeHtml(video.imdb.averageRating)}</span>` : ''}
                     </div>
                     <div class="video-info">
                         <h3 class="video-title">
@@ -784,6 +814,7 @@ export async function generateHtmlPage(channels: ChannelData[], outputPath: stri
                                 ? `<span>📅 ${escapeHtml(video.publishDate)}${video.publishedTime ? ` (${escapeHtml(video.publishedTime)})` : ''}</span>` 
                                 : (video.publishedTime ? `<span title="${escapeHtml(calculateActualDate(video.publishedTime) || video.publishedTime)}">📅 ${escapeHtml(video.publishedTime)}</span>` : '')}
                         </div>
+                        ${video.imdb?.genres ? `<div class="imdb-genres">${video.imdb.genres.split(',').map(g => `<span class="imdb-genre-tag">${escapeHtml(g.trim())}</span>`).join('')}</div>` : ''}
                         ${video.description ? `
                         <div class="video-description">
                             <button class="video-description-toggle" onclick="this.nextElementSibling.classList.toggle('expanded'); this.querySelector('.toggle-icon').textContent = this.nextElementSibling.classList.contains('expanded') ? '▲' : '▼';">

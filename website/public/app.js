@@ -1623,7 +1623,7 @@ function renderShorts() {
 
 // Render a video card
 function renderVideoCard(video) {
-    const { videoId, title, viewCount, publishedTime, publishDate, description, duration, channelTitle, channelColor, channelHandle, channelAvatar } = video;
+    const { videoId, title, viewCount, publishedTime, publishDate, description, duration, channelTitle, channelColor, channelHandle, channelAvatar, imdb } = video;
     // Use cached proxy for thumbnail to avoid YouTube throttling
     const thumbnail = `/img/${encodeURIComponent(channelHandle || 'unknown')}/${videoId}/mqdefault`;
     const showChannelIndicator = channels.length > 1;
@@ -1631,7 +1631,7 @@ function renderVideoCard(video) {
     const avatarUrl = channelAvatar ? `/avatar/${encodeURIComponent(channelHandle)}?url=${encodeURIComponent(channelAvatar)}` : '';
     
     // Store video data in registry to avoid inline JSON escaping issues
-    const videoData = { videoId, title, viewCount, publishedTime, publishDate, description, channelTitle };
+    const videoData = { videoId, title, viewCount, publishedTime, publishDate, description, channelTitle, imdb };
     videoDataRegistry.set(videoId, videoData);
     
     // Date display: show exact date if enriched, otherwise relative time
@@ -1644,6 +1644,12 @@ function renderVideoCard(video) {
     
     // Enriched indicator (shows if video has publish date enrichment data)
     const enrichedBadge = publishDate ? '<span class="enriched-badge" title="Click for full description">📝</span>' : '';
+    
+    // IMDB badge on thumbnail
+    const imdbBadge = imdb && imdb.averageRating ? `<span class="imdb-badge" title="IMDB ${imdb.averageRating}/10 (${Number(imdb.numVotes).toLocaleString()} votes)">⭐ ${imdb.averageRating}</span>` : '';
+    
+    // IMDB genres below meta
+    const imdbGenres = imdb && imdb.genres ? `<div class="imdb-genres">${imdb.genres.split(',').map(g => `<span class="imdb-genre-tag">${escapeHtml(g.trim())}</span>`).join('')}</div>` : '';
     
     // Hide/Unhide button based on current view
     const isHidden = hiddenVideoIds.has(videoId);
@@ -1661,6 +1667,7 @@ function renderVideoCard(video) {
                 ${showChannelIndicator ? `<span class="channel-indicator" style="--channel-color: ${channelColor};">${avatarUrl ? `<img src="${avatarUrl}" alt="" class="channel-indicator-icon">` : ''}${escapeHtml(channelTitle)}</span>` : ''}
                 <img src="${thumbnail}" alt="${escapeHtml(title)}" loading="lazy">
                 ${duration ? `<span class="video-duration">${escapeHtml(duration)}</span>` : ''}
+                ${imdbBadge}
                 ${enrichedBadge}
                 ${starButton}
                 ${hideButton}
@@ -1671,6 +1678,7 @@ function renderVideoCard(video) {
                     ${viewCount ? `<span>👁️ ${escapeHtml(viewCount)}</span>` : ''}
                     ${dateDisplay ? `<span>${dateDisplay}</span>` : ''}
                 </div>
+                ${imdbGenres}
             </div>
         </article>
     `;
@@ -1810,6 +1818,7 @@ const videoModalChannel = document.getElementById('videoModalChannel');
 const videoModalViews = document.getElementById('videoModalViews');
 const videoModalDate = document.getElementById('videoModalDate');
 const videoModalDescription = document.getElementById('videoModalDescription');
+const videoModalImdb = document.getElementById('videoModalImdb');
 const videoModalLink = document.getElementById('videoModalLink');
 const videoModalInsights = document.getElementById('videoModalInsights');
 const insightsContent = document.getElementById('insightsContent');
@@ -1831,7 +1840,7 @@ function openVideoModalById(videoId) {
 }
 
 function openVideoModal(videoData) {
-    const { videoId, title, viewCount, publishedTime, publishDate, description, channelTitle, isShort } = videoData;
+    const { videoId, title, viewCount, publishedTime, publishDate, description, channelTitle, isShort, imdb } = videoData;
     
     // Build YouTube embed URL
     const embedUrl = isShort 
@@ -1879,6 +1888,36 @@ function openVideoModal(videoData) {
     }
     
     videoModalLink.href = youtubeUrl;
+    
+    // IMDB section
+    if (imdb && imdb.tconst) {
+        const imdbUrl = `https://www.imdb.com/title/${imdb.tconst}/`;
+        const parts = [];
+        if (imdb.averageRating) parts.push(`<span class="imdb-modal-rating">⭐ ${imdb.averageRating}/10</span>`);
+        if (imdb.numVotes) parts.push(`<span class="imdb-modal-votes">(${Number(imdb.numVotes).toLocaleString()} votes)</span>`);
+        if (imdb.startYear) parts.push(`<span class="imdb-modal-year">📅 ${imdb.startYear}</span>`);
+        if (imdb.runtimeMinutes) parts.push(`<span class="imdb-modal-runtime">⏱ ${imdb.runtimeMinutes} min</span>`);
+        if (imdb.titleType) parts.push(`<span class="imdb-modal-type">${imdb.titleType}</span>`);
+        
+        const genres = imdb.genres ? imdb.genres.split(',').map(g => `<span class="imdb-genre-tag">${escapeHtml(g.trim())}</span>`).join('') : '';
+        const cast = imdb.cast && imdb.cast.length > 0 ? `<div class="imdb-modal-cast">🎭 ${imdb.cast.map(n => escapeHtml(n)).join(', ')}</div>` : '';
+        
+        videoModalImdb.innerHTML = `
+            <div class="imdb-modal-section">
+                <div class="imdb-modal-header">
+                    <strong>${escapeHtml(imdb.primaryTitle)}</strong>
+                    <a href="${imdbUrl}" target="_blank" rel="noopener noreferrer" class="imdb-link" title="View on IMDB">IMDB ↗</a>
+                </div>
+                <div class="imdb-modal-meta">${parts.join(' ')}</div>
+                ${genres ? `<div class="imdb-modal-genres">${genres}</div>` : ''}
+                ${cast}
+            </div>
+        `;
+        videoModalImdb.hidden = false;
+    } else {
+        videoModalImdb.innerHTML = '';
+        videoModalImdb.hidden = true;
+    }
     
     // Reset insights section
     videoModalInsights.hidden = true;

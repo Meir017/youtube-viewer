@@ -1147,6 +1147,101 @@ body {
     border-color: rgba(78, 205, 196, 0.6);
 }
 
+/* IMDB Badge on video card thumbnail */
+.imdb-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(0, 0, 0, 0.85);
+    color: #f5c518;
+    padding: 3px 7px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    z-index: 2;
+    pointer-events: none;
+}
+
+/* IMDB genre tags on video card */
+.imdb-genres {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.imdb-genre-tag {
+    background: rgba(245, 197, 24, 0.15);
+    color: rgba(245, 197, 24, 0.9);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    font-weight: 500;
+}
+
+/* IMDB section in video modal */
+.video-modal-imdb {
+    margin-top: 12px;
+}
+
+.imdb-modal-section {
+    background: rgba(245, 197, 24, 0.08);
+    border: 1px solid rgba(245, 197, 24, 0.2);
+    border-radius: 8px;
+    padding: 12px;
+}
+
+.imdb-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.imdb-modal-header strong {
+    color: #f5c518;
+}
+
+.imdb-link {
+    color: #f5c518;
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border: 1px solid rgba(245, 197, 24, 0.4);
+    border-radius: 4px;
+}
+
+.imdb-link:hover {
+    background: rgba(245, 197, 24, 0.15);
+}
+
+.imdb-modal-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 8px;
+}
+
+.imdb-modal-rating {
+    color: #f5c518;
+    font-weight: 700;
+}
+
+.imdb-modal-genres {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-bottom: 8px;
+}
+
+.imdb-modal-cast {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.7);
+}
+
 /* Enrichment Panel */
 .enrichment-panel-container {
     margin-left: auto;

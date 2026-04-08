@@ -8,6 +8,18 @@ export interface ChannelUrls {
     channelAboutUrl: string;
 }
 
+export interface ImdbData {
+    tconst: string;
+    primaryTitle: string;
+    titleType: string;
+    startYear: string;
+    runtimeMinutes: string;
+    genres: string;
+    averageRating: string;
+    numVotes: string;
+    cast: string[];
+}
+
 export interface Video {
     videoId: string;
     title?: string;
@@ -20,6 +32,7 @@ export interface Video {
     description?: string;
     channelTitle?: string;
     channelIndex?: number;
+    imdb?: ImdbData;
 }
 
 export interface Short {

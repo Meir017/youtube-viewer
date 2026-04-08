@@ -1,0 +1,10 @@
+tconst	titleType	primaryTitle	originalTitle	isAdult	startYear	endYear	runtimeMinutes	genres
+tt0111161	movie	The Shawshank Redemption	The Shawshank Redemption	0	1994	\N	142	Drama
+tt0468569	movie	The Dark Knight	The Dark Knight	0	2008	\N	152	Action,Crime,Drama
+tt15398776	movie	Oppenheimer	Oppenheimer	0	2023	\N	180	Biography,Drama,History
+tt0944947	tvSeries	Game of Thrones	Game of Thrones	0	2011	2019	57	Action,Adventure,Drama
+tt1375666	movie	Inception	Inception	0	2010	\N	148	Action,Adventure,Sci-Fi
+tt9999999	tvEpisode	Some Episode	Some Episode	0	2020	\N	42	Drama
+tt0000001	short	A Short Film	A Short Film	0	1900	\N	5	Documentary,Short
+tt2467372	tvSeries	Brooklyn Nine-Nine	Brooklyn Nine-Nine	0	2013	2021	22	Comedy,Crime
+tt1234567	movie	Oppenheimer	Oppenheimer	0	1980	\N	120	Drama,History

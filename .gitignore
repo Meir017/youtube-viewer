@@ -127,7 +127,7 @@ dist
 .vscode-test
 
 # Website data (user channels)
-website/data/channels.json
+website/data/
 
 # Website image cache
 website/cache/
@@ -154,3 +154,6 @@ test-results/
 
 # Refresh tool log output
 refresh-log.md
+
+# IMDB dataset files (large, downloaded on demand)
+data/imdb/
