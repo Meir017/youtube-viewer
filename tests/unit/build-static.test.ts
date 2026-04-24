@@ -60,8 +60,8 @@ describe('build-static', () => {
         expect(copied).toHaveLength(sourceStore.collections.length + 5);
         expect(copied.map(f => f.name)).toEqual([
             'index.html',
-            'app.js',
             'styles.css',
+            'app.js',
             'data/index.json',
             'data/collection-tech.json',
             'data/descriptions.json',

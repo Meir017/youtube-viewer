@@ -1908,6 +1908,11 @@ body {
     border-color: #f59e0b;
 }
 
+.view-toggle-tab.highlights.active {
+    background: #a855f7;
+    border-color: #a855f7;
+}
+
 .hide-video-btn {
     position: absolute;
     top: 8px;

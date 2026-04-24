@@ -43,6 +43,11 @@ let showHiddenVideos = false; // Toggle between regular and hidden videos view
 let starredVideoIds = new Set();
 let showStarredVideos = false; // Toggle to show only starred videos
 
+// Highlights view state (top videos from the last 30 days by views)
+let showHighlights = false;
+const HIGHLIGHTS_MAX_AGE_DAYS = 30;
+const HIGHLIGHTS_COUNT = 50;
+
 // Enrichment state
 let enrichmentStatus = null;
 let enrichmentPollInterval = null;
@@ -730,6 +735,7 @@ async function unhideVideo(videoId, event) {
 function toggleHiddenVideosView(showHidden) {
     showHiddenVideos = showHidden;
     showStarredVideos = false;
+    showHighlights = false;
     
     // Update tab styles
     document.querySelectorAll('.view-toggle-tab').forEach(tab => {
@@ -737,6 +743,44 @@ function toggleHiddenVideosView(showHidden) {
     });
     
     renderVideos();
+}
+
+// Toggle highlights view (top videos from the last 30 days by views)
+function toggleHighlightsView(showHl) {
+    showHighlights = showHl;
+    if (showHl) {
+        showHiddenVideos = false;
+        showStarredVideos = false;
+        resetUserFilters();
+    }
+
+    document.querySelectorAll('.view-toggle-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.view === (showHl ? 'highlights' : 'videos'));
+    });
+
+    renderVideos();
+}
+
+// Reset user-driven filters (search, duration, age range) and their UI inputs.
+// Used when entering the Highlights view so its own "last 30 days / top by
+// views" focus isn't silently narrowed by pre-existing filters.
+function resetUserFilters() {
+    searchQuery = '';
+    minDurationMinutes = 0;
+    maxDurationMinutes = Infinity;
+    ageMinDays = 0;
+    ageMaxDays = Infinity;
+
+    if (searchBox) searchBox.value = '';
+    if (minDurationInput) minDurationInput.value = '';
+    if (maxDurationInput) maxDurationInput.value = '';
+    if (ageFromDaysInput) ageFromDaysInput.value = '';
+    if (ageToDaysInput) ageToDaysInput.value = '';
+
+    // Activate the "All" age preset button to match the cleared state
+    agePresetButtons.forEach(b => {
+        b.classList.toggle('active', b.dataset.days === '0');
+    });
 }
 
 // ==================== STARRED VIDEOS FUNCTIONS ====================
@@ -815,6 +859,7 @@ async function unstarVideo(videoId, event) {
 function toggleStarredVideosView(showStarred) {
     showStarredVideos = showStarred;
     showHiddenVideos = false;
+    showHighlights = false;
     
     // Update tab styles
     document.querySelectorAll('.view-toggle-tab').forEach(tab => {
@@ -904,17 +949,23 @@ function filterVideos(videos) {
         
         // Age range filter (min/max days)
         const videoAge = getVideoAgeDays(video);
-        const matchesAgeMin = videoAge >= ageMinDays;
-        const matchesAgeMax = ageMaxDays === Infinity || videoAge <= ageMaxDays;
-        const matchesAge = matchesAgeMin && matchesAgeMax;
-        
-        // Hidden videos filter
+        let matchesAge;
+        if (showHighlights) {
+            // Highlights view overrides user-set age range with a fixed last-30-days window
+            matchesAge = videoAge <= HIGHLIGHTS_MAX_AGE_DAYS;
+        } else {
+            const matchesAgeMin = videoAge >= ageMinDays;
+            const matchesAgeMax = ageMaxDays === Infinity || videoAge <= ageMaxDays;
+            matchesAge = matchesAgeMin && matchesAgeMax;
+        }
+
+        // Hidden videos filter (highlights always excludes hidden)
         const isHidden = hiddenVideoIds.has(video.videoId);
-        const matchesHiddenFilter = showHiddenVideos ? isHidden : !isHidden;
+        const matchesHiddenFilter = showHighlights ? !isHidden : (showHiddenVideos ? isHidden : !isHidden);
         
-        // Starred videos filter
+        // Starred videos filter (ignored in highlights view)
         const isStarred = starredVideoIds.has(video.videoId);
-        const matchesStarredFilter = showStarredVideos ? isStarred : true;
+        const matchesStarredFilter = showHighlights ? true : (showStarredVideos ? isStarred : true);
         
         return matchesChannel && matchesSearch && matchesMinDuration && matchesMaxDuration && matchesAge && !video.isShort && matchesHiddenFilter && matchesStarredFilter;
     });
@@ -1206,7 +1257,10 @@ async function selectCollection(id) {
     // Reset starred videos state
     starredVideoIds = new Set();
     showStarredVideos = false;
-    
+
+    // Reset highlights view
+    showHighlights = false;
+
     activeCollectionId = id;
     activeChannel = 'all';
     await loadCollectionChannels(id);
@@ -1454,12 +1508,21 @@ function renderChannelTabs() {
 // Render videos grid
 function renderVideos() {
     const filtered = filterVideos(allVideos);
-    const sorted = sortVideos(filtered);
+    let sorted;
+    if (showHighlights) {
+        // Highlights: order by views desc and cap at HIGHLIGHTS_COUNT
+        sorted = [...filtered].sort((a, b) => parseViews(b.viewCount) - parseViews(a.viewCount))
+            .slice(0, HIGHLIGHTS_COUNT);
+    } else {
+        sorted = sortVideos(filtered);
+    }
     
     // Show x/y count when text or duration filters are active
     const isFiltering = searchQuery !== '' || minDurationMinutes > 0 || maxDurationMinutes !== Infinity;
     let countText;
-    if (isFiltering) {
+    if (showHighlights) {
+        countText = `${sorted.length}`;
+    } else if (isFiltering) {
         const total = allVideos.filter(video => {
             const matchesChannel = activeChannel === 'all' || video.channelIndex === parseInt(activeChannel);
             const isHidden = hiddenVideoIds.has(video.videoId);
@@ -1477,8 +1540,11 @@ function renderVideos() {
     // Update section title based on view
     const sectionTitle = document.querySelector('#videosSection .section-title');
     if (sectionTitle) {
-        const emoji = showStarredVideos ? '⭐' : showHiddenVideos ? '👁️‍🗨️' : '🎬';
-        const text = showStarredVideos ? 'Starred Videos' : showHiddenVideos ? 'Hidden Videos' : 'Videos';
+        let emoji, text;
+        if (showHighlights) { emoji = '✨'; text = `Highlights (last ${HIGHLIGHTS_MAX_AGE_DAYS} days)`; }
+        else if (showStarredVideos) { emoji = '⭐'; text = 'Starred Videos'; }
+        else if (showHiddenVideos) { emoji = '👁️‍🗨️'; text = 'Hidden Videos'; }
+        else { emoji = '🎬'; text = 'Videos'; }
         sectionTitle.innerHTML = `
             ${emoji} ${text}
             <span class="section-count">${countText}</span>
@@ -1500,6 +1566,13 @@ function renderVideos() {
                 <div class="empty-state">
                     <h3>No channels added yet</h3>
                     <p>Add a YouTube channel handle above to get started!</p>
+                </div>
+            `;
+        } else if (showHighlights) {
+            videosGrid.innerHTML = `
+                <div class="empty-state">
+                    <h3>No highlights yet</h3>
+                    <p>No videos published in the last ${HIGHLIGHTS_MAX_AGE_DAYS} days match the current filters.</p>
                 </div>
             `;
         } else if (showHiddenVideos) {
@@ -1538,7 +1611,7 @@ function renderVideos() {
     videosVirtualScroll.setItems(sorted);
 }
 
-// Render view toggle tabs (Videos / Starred / Hidden)
+// Render view toggle tabs (Videos / Highlights / Starred / Hidden)
 function renderViewToggleTabs() {
     let viewToggle = document.getElementById('viewToggleTabs');
     
@@ -1555,19 +1628,21 @@ function renderViewToggleTabs() {
         }
     }
     
-    // Only show if there are starred or hidden videos
-    if (hiddenVideoIds.size === 0 && starredVideoIds.size === 0 && !showHiddenVideos && !showStarredVideos) {
-        viewToggle.hidden = true;
-        return;
-    }
-    
+    // Always visible — the Highlights tab is always available.
     viewToggle.hidden = false;
     
-    const activeView = showStarredVideos ? 'starred' : showHiddenVideos ? 'hidden' : 'videos';
+    let activeView;
+    if (showHighlights) activeView = 'highlights';
+    else if (showStarredVideos) activeView = 'starred';
+    else if (showHiddenVideos) activeView = 'hidden';
+    else activeView = 'videos';
     
     viewToggle.innerHTML = `
-        <button class="view-toggle-tab ${activeView === 'videos' ? 'active' : ''}" data-view="videos" onclick="toggleHiddenVideosView(false)">
+        <button class="view-toggle-tab ${activeView === 'videos' ? 'active' : ''}" data-view="videos" onclick="toggleHighlightsView(false); toggleHiddenVideosView(false)">
             🎬 Videos
+        </button>
+        <button class="view-toggle-tab highlights ${activeView === 'highlights' ? 'active' : ''}" data-view="highlights" onclick="toggleHighlightsView(true)">
+            ✨ Highlights
         </button>
         ${starredVideoIds.size > 0 || showStarredVideos ? `
         <button class="view-toggle-tab starred ${activeView === 'starred' ? 'active' : ''}" data-view="starred" onclick="toggleStarredVideosView(true)">

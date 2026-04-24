@@ -34,6 +34,11 @@ let maxDurationMinutes = Infinity;
 let ageMinDays = 0;        // Client-side age range filter: minimum age in days
 let ageMaxDays = Infinity; // Client-side age range filter: maximum age in days (Infinity = no limit)
 
+// Highlights view state (top videos from the last 30 days by views)
+let showHighlights = false;
+const HIGHLIGHTS_MAX_AGE_DAYS = 30;
+const HIGHLIGHTS_COUNT = 50;
+
 // Virtual scroll state
 let videosVirtualScroll = null;
 let shortsVirtualScroll = null;
@@ -436,6 +441,7 @@ async function selectCollection(id) {
     hideError();
     activeCollectionId = id;
     activeChannel = 'all';
+    showHighlights = false;
 
     try {
         await loadCollectionFromData(id);
@@ -464,11 +470,16 @@ function filterVideos(videos) {
         const matchesMinDuration = durationSec >= minDurationSec;
         const matchesMaxDuration = maxDurationSec === Infinity || durationSec <= maxDurationSec;
         
-        // Age range filter (min/max days)
+        // Age range filter (min/max days) — overridden in highlights view
         const videoAge = getVideoAgeDays(video);
-        const matchesAgeMin = videoAge >= ageMinDays;
-        const matchesAgeMax = ageMaxDays === Infinity || videoAge <= ageMaxDays;
-        const matchesAge = matchesAgeMin && matchesAgeMax;
+        let matchesAge;
+        if (showHighlights) {
+            matchesAge = videoAge <= HIGHLIGHTS_MAX_AGE_DAYS;
+        } else {
+            const matchesAgeMin = videoAge >= ageMinDays;
+            const matchesAgeMax = ageMaxDays === Infinity || videoAge <= ageMaxDays;
+            matchesAge = matchesAgeMin && matchesAgeMax;
+        }
         
         return matchesChannel && matchesSearch && matchesMinDuration && matchesMaxDuration && matchesAge && !video.isShort;
     });
@@ -621,20 +632,40 @@ function renderChannelTabs() {
 // Render videos grid
 function renderVideos() {
     const filtered = filterVideos(allVideos);
-    const sorted = sortVideos(filtered);
+    let sorted;
+    if (showHighlights) {
+        sorted = [...filtered].sort((a, b) => parseViews(b.viewCount) - parseViews(a.viewCount))
+            .slice(0, HIGHLIGHTS_COUNT);
+    } else {
+        sorted = sortVideos(filtered);
+    }
     
     // Show x/y count when text or duration filters are active
     const isFiltering = searchQuery !== '' || minDurationMinutes > 0 || maxDurationMinutes !== Infinity;
-    if (isFiltering) {
+    let countText;
+    if (showHighlights) {
+        countText = `${sorted.length}`;
+    } else if (isFiltering) {
         const total = allVideos.filter(video => {
             const matchesChannel = activeChannel === 'all' || video.channelIndex === parseInt(activeChannel);
             return matchesChannel && !video.isShort;
         }).length;
-        videoCountEl.textContent = `${sorted.length}/${total}`;
+        countText = `${sorted.length}/${total}`;
     } else {
-        videoCountEl.textContent = sorted.length;
+        countText = `${sorted.length}`;
     }
-    
+    videoCountEl.textContent = countText;
+
+    // Update section title
+    const sectionTitle = document.querySelector('#videosSection .section-title');
+    if (sectionTitle) {
+        const emoji = showHighlights ? '✨' : '🎬';
+        const text = showHighlights ? `Highlights (last ${HIGHLIGHTS_MAX_AGE_DAYS} days)` : 'Videos';
+        sectionTitle.innerHTML = `${emoji} ${text} <span class="section-count" id="videoCount">${countText}</span>`;
+    }
+
+    renderViewToggleTabs();
+
     if (sorted.length === 0) {
         // Destroy existing virtual scroll
         if (videosVirtualScroll) {
@@ -647,6 +678,13 @@ function renderVideos() {
                 <div class="empty-state">
                     <h3>No data available</h3>
                     <p>No channel data found.</p>
+                </div>
+            `;
+        } else if (showHighlights) {
+            videosGrid.innerHTML = `
+                <div class="empty-state">
+                    <h3>No highlights yet</h3>
+                    <p>No videos published in the last ${HIGHLIGHTS_MAX_AGE_DAYS} days match the current filters.</p>
                 </div>
             `;
         } else {
@@ -669,6 +707,61 @@ function renderVideos() {
         );
     }
     videosVirtualScroll.setItems(sorted);
+}
+
+// Render view toggle tabs (Videos / Highlights)
+function renderViewToggleTabs() {
+    let viewToggle = document.getElementById('viewToggleTabs');
+    if (!viewToggle) {
+        viewToggle = document.createElement('div');
+        viewToggle.id = 'viewToggleTabs';
+        viewToggle.className = 'view-toggle-tabs';
+        const controls = document.querySelector('#videosSection .controls');
+        if (controls) {
+            controls.parentNode.insertBefore(viewToggle, controls);
+        }
+    }
+    viewToggle.hidden = false;
+    const activeView = showHighlights ? 'highlights' : 'videos';
+    viewToggle.innerHTML = `
+        <button class="view-toggle-tab ${activeView === 'videos' ? 'active' : ''}" data-view="videos" onclick="toggleHighlightsView(false)">
+            🎬 Videos
+        </button>
+        <button class="view-toggle-tab highlights ${activeView === 'highlights' ? 'active' : ''}" data-view="highlights" onclick="toggleHighlightsView(true)">
+            ✨ Highlights
+        </button>
+    `;
+}
+
+// Toggle highlights view (top videos from the last 30 days by views)
+function toggleHighlightsView(showHl) {
+    showHighlights = !!showHl;
+    if (showHl) resetUserFilters();
+    document.querySelectorAll('.view-toggle-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.view === (showHl ? 'highlights' : 'videos'));
+    });
+    renderVideos();
+}
+
+// Reset user-driven filters (search, duration, age range) and their UI inputs.
+// Used when entering the Highlights view so its own "last 30 days / top by
+// views" focus isn't silently narrowed by pre-existing filters.
+function resetUserFilters() {
+    searchQuery = '';
+    minDurationMinutes = 0;
+    maxDurationMinutes = Infinity;
+    ageMinDays = 0;
+    ageMaxDays = Infinity;
+
+    if (searchBox) searchBox.value = '';
+    if (minDurationInput) minDurationInput.value = '';
+    if (maxDurationInput) maxDurationInput.value = '';
+    if (ageFromDaysInput) ageFromDaysInput.value = '';
+    if (ageToDaysInput) ageToDaysInput.value = '';
+
+    agePresetButtons.forEach(b => {
+        b.classList.toggle('active', b.dataset.days === '0');
+    });
 }
 
 // Render shorts grid

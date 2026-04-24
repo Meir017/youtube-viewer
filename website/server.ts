@@ -22,6 +22,25 @@ import * as cacheRoutes from './routes/cache';
 import * as imagesRoutes from './routes/images';
 
 const PUBLIC_DIR = join(import.meta.dir, 'public');
+const CLIENT_ENTRY = join(PUBLIC_DIR, 'app.ts');
+const clientTranspiler = new Bun.Transpiler({ loader: 'ts', target: 'browser' });
+
+// Transpile (strip TS types from) the browser client and cache the result.
+// We intentionally avoid Bun.build: app.ts has no imports/exports and must run
+// as a plain script so top-level function declarations reach the global scope
+// (inline `onclick="fn(...)"` handlers in the generated HTML need that).
+// In watch mode (`bun --watch`), the whole server process restarts on source
+// changes, so a simple in-memory cache keyed once at startup is correct.
+let clientBundleCache: { code: string; etag: string } | null = null;
+
+async function getClientBundle(): Promise<{ code: string; etag: string }> {
+    if (clientBundleCache) return clientBundleCache;
+    const source = await Bun.file(CLIENT_ENTRY).text();
+    const code = clientTranspiler.transformSync(source);
+    const etag = `W/"${code.length.toString(36)}"`;
+    clientBundleCache = { code, etag };
+    return clientBundleCache;
+}
 
 // Create dependencies
 const store: StoreInterface = createStore();
@@ -337,7 +356,30 @@ const server = Bun.serve({
         }
 
         // ==================== STATIC FILE SERVING ====================
-        
+
+        // Serve the bundled TypeScript client at /app.js
+        if (path === '/app.js') {
+            try {
+                const { code, etag } = await getClientBundle();
+                if (req.headers.get('if-none-match') === etag) {
+                    return new Response(null, { status: 304, headers: { ETag: etag } });
+                }
+                return new Response(code, {
+                    headers: {
+                        'Content-Type': 'application/javascript; charset=utf-8',
+                        ETag: etag,
+                        'Cache-Control': 'no-cache',
+                    },
+                });
+            } catch (err: any) {
+                log.error('Client bundle error:', err);
+                return new Response(`console.error(${JSON.stringify(String(err?.message ?? err))});`, {
+                    status: 500,
+                    headers: { 'Content-Type': 'application/javascript; charset=utf-8' },
+                });
+            }
+        }
+
         let filePath = path === '/' ? '/index.html' : path;
         const fullPath = join(PUBLIC_DIR, filePath);
 

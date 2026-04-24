@@ -80,11 +80,15 @@ const PROJECT_ROOT = resolve(import.meta.dir, '..');
 const STATIC_SRC = join(PROJECT_ROOT, 'static-website');
 const DATA_FILE = join(PROJECT_ROOT, 'website', 'data', 'channels.json');
 
-// Files to copy from static-website/
+// Files to copy verbatim from static-website/
 const STATIC_FILES = [
     'index.html',
-    'app.js',
     'styles.css',
+];
+
+// TypeScript entry points to bundle into the output directory. Map src → dest.
+const BUNDLED_ENTRIES: Array<{ src: string; dest: string }> = [
+    { src: 'app.ts', dest: 'app.js' },
 ];
 
 interface CopiedFile {
@@ -132,6 +136,13 @@ export async function buildStatic(outputDir: string, options: BuildStaticOptions
             throw new Error(`Static source file not found: ${srcPath}`);
         }
     }
+    for (const entry of BUNDLED_ENTRIES) {
+        const srcPath = join(STATIC_SRC, entry.src);
+        const f = Bun.file(srcPath);
+        if (!(await f.exists())) {
+            throw new Error(`Static source file not found: ${srcPath}`);
+        }
+    }
 
     // Ensure output directories exist
     await Bun.write(join(dataOutPath, '.gitkeep'), '');
@@ -145,6 +156,21 @@ export async function buildStatic(outputDir: string, options: BuildStaticOptions
         const content = await Bun.file(srcPath).arrayBuffer();
         await Bun.write(destPath, content);
         copied.push({ name: file, size: content.byteLength });
+    }
+
+    // Transpile TypeScript client entrypoints (type-strip only — no bundling,
+    // so top-level declarations stay in the global scope for inline onclick
+    // handlers). app.ts has no imports/exports, so this is equivalent to the
+    // previous plain-script behaviour.
+    const clientTranspiler = new Bun.Transpiler({ loader: 'ts', target: 'browser' });
+    for (const entry of BUNDLED_ENTRIES) {
+        const srcPath = join(STATIC_SRC, entry.src);
+        const destPath = join(outPath, entry.dest);
+        const source = await Bun.file(srcPath).text();
+        const code = clientTranspiler.transformSync(source);
+        const bytes = textEncoder.encode(code);
+        await Bun.write(destPath, bytes);
+        copied.push({ name: entry.dest, size: bytes.byteLength });
     }
 
     // Write collection index and per-collection data files with only the metadata the UI uses
