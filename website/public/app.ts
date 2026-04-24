@@ -1725,7 +1725,36 @@ function renderVideoCard(video) {
     
     // IMDB genres below meta
     const imdbGenres = imdb && imdb.genres ? `<div class="imdb-genres">${imdb.genres.split(',').map(g => `<span class="imdb-genre-tag">${escapeHtml(g.trim())}</span>`).join('')}</div>` : '';
-    
+
+    // Extra IMDB metadata (rating + year + runtime + genres) for the hover panel.
+    // Rendered eagerly since the data is already loaded; the description below
+    // is the only piece that requires a lazy fetch.
+    let hoverImdbBlock = '';
+    if (imdb) {
+        const bits = [];
+        if (imdb.averageRating) bits.push(`<span class="hover-imdb-rating">⭐ ${escapeHtml(imdb.averageRating)}/10${imdb.numVotes ? ` <span class="hover-imdb-votes">(${Number(imdb.numVotes).toLocaleString()} votes)</span>` : ''}</span>`);
+        if (imdb.startYear && imdb.startYear !== '\\N') bits.push(`<span>${escapeHtml(imdb.startYear)}</span>`);
+        if (imdb.runtimeMinutes && imdb.runtimeMinutes !== '\\N') bits.push(`<span>${escapeHtml(imdb.runtimeMinutes)} min</span>`);
+        if (imdb.genres) bits.push(`<span>${imdb.genres.split(',').map(g => escapeHtml(g.trim())).join(' · ')}</span>`);
+        if (bits.length) hoverImdbBlock = `<div class="hover-imdb">${bits.join('')}</div>`;
+    }
+
+    // Hover-expand panel. Hidden by default via CSS; populated with the full
+    // description on first hover (see handleCardHover).
+    const hoverDetails = `
+        <div class="video-card-hover-details" aria-hidden="true">
+            <div class="hover-title">${escapeHtml(title)}</div>
+            <div class="hover-meta">
+                ${duration ? `<span>⏱ ${escapeHtml(duration)}</span>` : ''}
+                ${viewCount ? `<span>👁️ ${escapeHtml(viewCount)}</span>` : ''}
+                ${dateDisplay ? `<span>${dateDisplay}</span>` : ''}
+                ${channelTitle ? `<span class="hover-channel">${escapeHtml(channelTitle)}</span>` : ''}
+            </div>
+            ${hoverImdbBlock}
+            <div class="hover-description is-loading" onclick="event.stopPropagation()">Loading description…</div>
+        </div>
+    `;
+
     // Hide/Unhide button based on current view
     const isHidden = hiddenVideoIds.has(videoId);
     const hideButton = showHiddenVideos 
@@ -1737,7 +1766,7 @@ function renderVideoCard(video) {
     const starButton = `<button class="star-video-btn${isStarred ? ' starred' : ''}" onclick="${isStarred ? 'unstarVideo' : 'starVideo'}('${videoId}', event)" title="${isStarred ? 'Unstar video' : 'Star video'}">${isStarred ? '⭐' : '☆'}</button>`;
     
     return `
-        <article class="video-card${publishDate ? ' is-enriched' : ''}${isStarred ? ' is-starred' : ''}" onclick="openVideoModalById('${videoId}')" style="cursor: pointer;">
+        <article class="video-card${publishDate ? ' is-enriched' : ''}${isStarred ? ' is-starred' : ''}" data-video-id="${videoId}" onmouseenter="handleCardHover(event)" onmouseleave="handleCardLeave(event)" onclick="openVideoModalById('${videoId}')" style="cursor: pointer;">
             <div class="video-thumbnail">
                 ${showChannelIndicator ? `<span class="channel-indicator" style="--channel-color: ${channelColor};">${avatarUrl ? `<img src="${avatarUrl}" alt="" class="channel-indicator-icon">` : ''}${escapeHtml(channelTitle)}</span>` : ''}
                 <img src="${thumbnail}" alt="${escapeHtml(title)}" loading="lazy">
@@ -1755,6 +1784,7 @@ function renderVideoCard(video) {
                 </div>
                 ${imdbGenres}
             </div>
+            ${hoverDetails}
         </article>
     `;
 }
@@ -1825,6 +1855,59 @@ function getCachedVideoDescription(videoId, fallbackDescription) {
         return descriptionCache.get(videoId);
     }
     return typeof fallbackDescription === 'string' ? fallbackDescription : undefined;
+}
+
+// ── Hover-to-expand preview ──────────────────────────────────────────
+// Show extra metadata + the full description inside the card itself after a
+// short dwell. Lazy-fetches the description on the first hover so scrolling
+// through the grid doesn't spam /videos/:id/description.
+const HOVER_DWELL_MS = 350;
+const hoverTimers = new WeakMap();
+
+function handleCardHover(e) {
+    const card = e.currentTarget;
+    if (!card || !card.dataset) return;
+    const videoId = card.dataset.videoId;
+    if (!videoId) return;
+
+    // Cancel any still-pending timer for this card (defensive — mouseenter
+    // shouldn't fire twice without a mouseleave, but event order can be odd
+    // across browsers when the cursor enters via a child element).
+    const existing = hoverTimers.get(card);
+    if (existing) clearTimeout(existing);
+
+    const timer = setTimeout(() => {
+        hoverTimers.delete(card);
+        const descEl = card.querySelector('.hover-description');
+        if (!descEl || descEl.dataset.loaded === '1') return;
+        descEl.dataset.loaded = '1';
+        loadVideoDescription(videoId)
+            .then((desc) => {
+                descEl.classList.remove('is-loading');
+                if (desc) {
+                    descEl.innerHTML = linkifyText(desc);
+                } else {
+                    descEl.textContent = 'No description available';
+                    descEl.classList.add('is-empty');
+                }
+            })
+            .catch(() => {
+                descEl.classList.remove('is-loading');
+                descEl.textContent = 'Description unavailable';
+                descEl.classList.add('is-empty');
+            });
+    }, HOVER_DWELL_MS);
+    hoverTimers.set(card, timer);
+}
+
+function handleCardLeave(e) {
+    const card = e.currentTarget;
+    if (!card) return;
+    const t = hoverTimers.get(card);
+    if (t) {
+        clearTimeout(t);
+        hoverTimers.delete(card);
+    }
 }
 
 async function loadVideoDescription(videoId) {
