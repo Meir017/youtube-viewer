@@ -44,7 +44,7 @@ describe('parseTitleRatings', () => {
     test('parses title.ratings.tsv.gz', async () => {
         const ratings = await parseTitleRatings(FIXTURES_DIR);
 
-        expect(ratings.size).toBe(7);
+        expect(ratings.size).toBe(10);
         expect(ratings.has('tt0111161')).toBe(true);
         expect(ratings.has('tt15398776')).toBe(true);
     });

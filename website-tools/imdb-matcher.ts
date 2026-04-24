@@ -74,6 +74,15 @@ const STRIP_PATTERNS = [
     /\btickets?\s+on\s+sale\b/i,
     /\bstream\s+on\b.*/i,
     /\bnow\s+streaming\b/i,
+    /\bnow\s+playing\b.*/i,
+    /\bonly\s+in\s+theaters?\b.*/i,
+    /\bin\s+theaters?\s+(?:now|this|[a-z]+day|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*)\b.*/i,
+
+    // Common Movie-Trailers-collection clip noise
+    /\bcold\s+opens?\b/i,
+    /\breunion\b/i,
+    /\bpodcast\b/i,
+    /\bbravocon\b.*/i,
 
     // Title reveal / announcement
     /\btitle\s+reveal\b/i,
@@ -115,6 +124,18 @@ export function extractTitleCandidates(videoTitle: string): { candidates: string
         if (pipeParts.length >= 3) {
             candidates.push(pipeParts.slice(0, 2).join(' ').trim());
         }
+
+        // Try every middle/last segment as a candidate too — TV-show clips often put
+        // the show name after the clip description, e.g.
+        //   "Li'l Sebastian: ... | Parks and Recreation"
+        //   "How Stunts In ... | The Last of Us Season 2 | Max"
+        // Skip segments that are just a platform name.
+        for (let i = 1; i < pipeParts.length; i++) {
+            const seg = pipeParts[i].trim();
+            if (!seg) continue;
+            if (isPlatformSegment(seg)) continue;
+            candidates.push(seg);
+        }
     }
 
     // Also try the full title with cleanup (catches patterns without pipes)
@@ -127,8 +148,19 @@ export function extractTitleCandidates(videoTitle: string): { candidates: string
         candidates.push(dashParts[0].trim());
     }
 
+    // Clean up each candidate. For candidates with a leading possessive (e.g.
+    // "Lionsgate's Beast"), also try a variant with the possessive stripped, in
+    // addition to the original — this avoids chopping real titles like
+    // "All's Fair" while still recovering titles prefixed with a studio name.
+    const expanded: string[] = [];
+    for (const c of candidates) {
+        expanded.push(c);
+        const m = c.match(/^\S+(?:'s|\u2019s)\s+(.+)$/i);
+        if (m && m[1].trim().length >= 2) expanded.push(m[1].trim());
+    }
+
     // Clean up each candidate; drop anything too short to be a real title
-    const cleaned = candidates
+    const cleaned = expanded
         .map(c => cleanCandidate(c))
         .filter(c => c.length >= 2 && !/^(?:the|a|an)$/i.test(c));
 
@@ -164,8 +196,9 @@ function cleanCandidate(raw: string): string {
         s = s.replace(pattern, '');
     }
 
-    // Remove leading possessive studio: "Lionsgate's", "Lee Cronin's"
-    s = s.replace(/^\S+(?:'s|'s)\s+/i, '');
+    // (Leading possessive studios like "Lionsgate's Beast" are handled by
+    // generating an extra candidate in extractTitleCandidates, not here, so that
+    // real titles containing a possessive — "All's Fair" — aren't destroyed.)
 
     // Remove "Nth Anniversary" patterns
     s = s.replace(/\s*\d+(?:st|nd|rd|th)\s+anniversary\b/gi, '');
@@ -178,8 +211,10 @@ function cleanCandidate(raw: string): string {
     // Only strip if it looks like 2+ "FirstName LastName" pairs separated by commas
     s = s.replace(/\s+(?:[A-Z][a-z]+\s+[A-Z][a-z']+(?:\s*,\s*[A-Z][a-z]+\s+[A-Z][a-z']+)+)\s*$/, '');
 
-    // Remove "Ft." / "Featuring" sections
-    s = s.replace(/\s*\(?(?:ft\.?|featuring)\s+.*/i, '');
+    // Remove "Ft." / "Feat." / "Featuring" sections — only when preceded by a
+    // separator (paren, bracket, comma, dash, pipe) or whitespace, AND require the
+    // period on "ft"/"feat" so we don't chop real words like "Minecraft" or "Defeat".
+    s = s.replace(/(?:^|[\s\(\[,\-–—|])(?:ft\.|feat\.|featuring\b)\s+.*$/i, '');
 
     // Remove empty parentheses left behind
     s = s.replace(/\(\s*\)/g, '');
@@ -197,6 +232,103 @@ function escapeRegex(s: string): string {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Detect a pipe segment that's just a platform/network name (possibly with a
+// leading/trailing "official trailer" etc.) — these aren't useful candidates.
+function isPlatformSegment(seg: string): boolean {
+    const stripped = seg
+        .toLowerCase()
+        .replace(/\b(?:official\s+)?(?:final\s+)?(?:teaser\s+)?trailer\s*\d*\b/gi, '')
+        .replace(/[^\w\s+]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (!stripped) return true;
+    return PLATFORM_NAMES.some(p => stripped === p || stripped === p.replace(/\s+/g, ''));
+}
+
+// ── Description-based candidate extraction ──────────────────────────
+
+// Hashtags that are NOT title names (platforms/generic marketing).
+const NOISE_HASHTAGS = new Set([
+    'peacock', 'hulu', 'netflix', 'primevideo', 'amazonprime', 'hbo', 'hbomax',
+    'max', 'appletv', 'disney', 'disneyplus', 'paramount', 'paramountplus',
+    'a24', 'lionsgate', 'sonypictures', 'universalpictures', 'warnerbros',
+    'focusfeatures', 'movie', 'movies', 'trailer', 'trailers', 'officialtrailer',
+    'film', 'streaming', 'newmovie', 'newtrailer', 'tvshow', 'tvseries',
+    'comedy', 'drama', 'action', 'horror', 'thriller', 'scifi', 'fantasy',
+    'animation', 'documentary', 'foryou', 'fyp', 'viral', 'shorts',
+]);
+
+/**
+ * Split a camelCase / PascalCase hashtag into whitespace-separated words.
+ *   "JurassicWorldRebirth" → "Jurassic World Rebirth"
+ *   "WickedForGood"        → "Wicked For Good"
+ */
+function splitCamelCase(s: string): string {
+    return s
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+        .trim();
+}
+
+/**
+ * Extract likely movie/show names from a YouTube video description.
+ * Returns candidate title strings (best first) to try against the IMDB index
+ * when title-based matching fails.
+ */
+export function extractTitleCandidatesFromDescription(desc: string): string[] {
+    if (!desc) return [];
+    const candidates: string[] = [];
+
+    // 1. "Watch <Title> Streaming on <Platform>" / "Watch <Title> on <Platform>"
+    //    Very reliable signal for Peacock/Hulu/Max clip-style videos.
+    const watchRe = /\bWatch\s+([A-Z][^\n|:]{2,80}?)\s+(?:Streaming(?:\s+Now)?\s+on|on)\s+[A-Z]/g;
+    let m: RegExpExecArray | null;
+    while ((m = watchRe.exec(desc)) !== null) {
+        candidates.push(m[1].trim());
+    }
+
+    // 2. "<Title> is (now) streaming on <Platform>"
+    //    "<Title> premieres <date> on <Platform>"
+    const premRe = /\b([A-Z][A-Za-z0-9 '\u2019:,!?&.\-]{2,60}?)\s+(?:is\s+now\s+streaming|premieres|arrives|returns)\s+/g;
+    while ((m = premRe.exec(desc)) !== null) {
+        candidates.push(m[1].trim());
+    }
+
+    // 3. Hashtag expansion: "#JurassicWorldRebirth" → "Jurassic World Rebirth"
+    //    Skip noise hashtags (platform names, generic marketing).
+    const hashRe = /#([A-Za-z][A-Za-z0-9]{2,60})/g;
+    while ((m = hashRe.exec(desc)) !== null) {
+        const tag = m[1];
+        if (NOISE_HASHTAGS.has(tag.toLowerCase())) continue;
+        const expanded = splitCamelCase(tag);
+        // Only useful if it actually split into multiple words
+        if (/\s/.test(expanded)) candidates.push(expanded);
+    }
+
+    // 4. Quoted titles: "Some Title" or \u201CSome Title\u201D — only when the
+    //    quoted phrase looks like a title (Title Case, no trailing punctuation).
+    const quoteRe = /["\u201C]([A-Z][^"\u201D\n]{2,60})["\u201D]/g;
+    while ((m = quoteRe.exec(desc)) !== null) {
+        const q = m[1].trim();
+        // Skip obvious non-titles (contain a lowercase-only word that looks like a sentence fragment)
+        if (/[.!?]$/.test(q)) continue;
+        candidates.push(q);
+    }
+
+    // Clean / dedupe; reuse cleanCandidate to strip common noise
+    const cleaned = candidates
+        .map(c => cleanCandidate(c))
+        .filter(c => c.length >= 2 && !/^(?:the|a|an)$/i.test(c));
+
+    const seen = new Set<string>();
+    return cleaned.filter(c => {
+        const norm = c.toLowerCase();
+        if (seen.has(norm)) return false;
+        seen.add(norm);
+        return true;
+    });
+}
+
 // ── Normalization for index matching ─────────────────────────────────
 
 /**
@@ -206,7 +338,8 @@ function escapeRegex(s: string): string {
 export function normalizeTitle(title: string): string {
     return title
         .toLowerCase()
-        .replace(/['']/g, "'")       // normalize apostrophes
+        // Normalize Unicode curly/typographic apostrophes to ASCII '
+        .replace(/[\u2018\u2019\u02BC\u02B9\u2032]/g, "'")
         .replace(/[^\w\s']/g, ' ')   // strip punctuation except apostrophe
         .replace(/\s+/g, ' ')        // collapse whitespace
         .trim();
@@ -263,29 +396,19 @@ export class ImdbTitleIndex {
 
     /**
      * Match a YouTube video title against the IMDB index.
-     * Returns the best match or null.
+     * Returns the best match or null. When provided, `description` is used as
+     * a fallback source of candidate titles if title-based matching fails.
      */
-    match(videoTitle: string, preferredYear?: string | null): MatchResult | null {
+    match(videoTitle: string, preferredYear?: string | null, description?: string | null): MatchResult | null {
         const { candidates, year } = extractTitleCandidates(videoTitle);
         const effectiveYear = preferredYear ?? year;
 
-        for (const candidate of candidates) {
-            const normalized = normalizeTitle(candidate);
-            if (!normalized) continue;
+        const titleMatch = this.matchCandidates(candidates, effectiveYear, 'normalized');
+        if (titleMatch) return titleMatch;
 
-            const entries = this.index.get(normalized);
-            if (entries && entries.length > 0) {
-                const best = this.pickBest(entries, effectiveYear);
-                if (best) {
-                    return this.buildResult(best, 'normalized');
-                }
-            }
-        }
-
-        // Fuzzy fallback: try progressively shorter prefixes of the first candidate
+        // Fuzzy fallback on the primary title candidate
         if (candidates.length > 0) {
             const words = normalizeTitle(candidates[0]).split(' ');
-            // Try removing words from the end, down to minimum 2 words
             for (let len = words.length - 1; len >= 2; len--) {
                 const prefix = words.slice(0, len).join(' ');
                 const entries = this.index.get(prefix);
@@ -298,6 +421,35 @@ export class ImdbTitleIndex {
             }
         }
 
+        // Description fallback: extract titles from the video description
+        if (description) {
+            const descCandidates = extractTitleCandidatesFromDescription(description);
+            if (descCandidates.length > 0) {
+                const descMatch = this.matchCandidates(descCandidates, effectiveYear, 'normalized');
+                if (descMatch) return descMatch;
+            }
+        }
+
+        return null;
+    }
+
+    private matchCandidates(
+        candidates: string[],
+        effectiveYear: string | null,
+        confidence: MatchResult['confidence'],
+    ): MatchResult | null {
+        for (const candidate of candidates) {
+            const normalized = normalizeTitle(candidate);
+            if (!normalized) continue;
+
+            const entries = this.index.get(normalized);
+            if (entries && entries.length > 0) {
+                const best = this.pickBest(entries, effectiveYear);
+                if (best) {
+                    return this.buildResult(best, confidence);
+                }
+            }
+        }
         return null;
     }
 
