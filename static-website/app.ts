@@ -961,11 +961,10 @@ function getHoverPreviewEl() {
     el.id = 'hoverPreview';
     el.className = 'hover-preview';
     el.setAttribute('aria-hidden', 'true');
-    el.addEventListener('click', (ev) => {
-        const target = ev.target as HTMLElement;
-        if (target && target.classList && target.classList.contains('hover-preview-backdrop')) {
-            hideHoverPreview();
-        }
+    el.addEventListener('mouseleave', (ev) => {
+        const next = (ev as MouseEvent).relatedTarget as HTMLElement | null;
+        if (next && next.closest && next.closest('.video-card[data-video-id]')) return;
+        hideHoverPreview();
     });
     document.body.appendChild(el);
     hoverPreviewEl = el;
@@ -1025,6 +1024,8 @@ function showHoverPreviewFor(card) {
     const el = getHoverPreviewEl();
     hoverPreviewVideoId = videoId;
     el.innerHTML = buildHoverPreviewHtml(video);
+    // Force a reflow so the scale-up animation runs on the very first hover.
+    void (el as HTMLElement).offsetWidth;
     el.classList.add('is-visible');
     el.setAttribute('aria-hidden', 'false');
 
@@ -1069,6 +1070,8 @@ function handleCardLeave(e) {
         clearTimeout(t);
         hoverTimers.delete(card);
     }
+    const next = (e as MouseEvent).relatedTarget as HTMLElement | null;
+    if (next && next.closest && next.closest('#hoverPreview')) return;
     hideHoverPreview();
 }
 

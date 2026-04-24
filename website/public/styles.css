@@ -2056,16 +2056,18 @@ body {
     position: fixed;
     inset: 0;
     z-index: 9500;
-    display: none;
-    pointer-events: none;
     opacity: 0;
-    transition: opacity 160ms ease;
+    visibility: hidden;
+    pointer-events: none;
+    /* Delay flipping visibility back to `hidden` until after the fade-out. */
+    transition: opacity 180ms ease, visibility 0s linear 180ms;
 }
 
 .hover-preview.is-visible {
-    display: block;
-    pointer-events: auto;
     opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: opacity 180ms ease, visibility 0s linear 0s;
 }
 
 .hover-preview-backdrop {
@@ -2074,13 +2076,20 @@ body {
     background: rgba(0, 0, 0, 0.55);
     backdrop-filter: blur(3px);
     -webkit-backdrop-filter: blur(3px);
+    /* Intentionally non-interactive: if the backdrop captured pointer events
+       it would steal the mouse from the hovered card and cause the popup to
+       oscillate open/closed. The panel below keeps pointer-events: auto so
+       the description remains scrollable. */
+    pointer-events: none;
 }
 
 .hover-preview-panel {
+    pointer-events: auto;
     position: absolute;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%);
+    transform: translate(-50%, -50%) scale(0.86);
+    opacity: 0;
     width: min(720px, calc(100vw - 32px));
     max-height: calc(100vh - 64px);
     display: flex;
@@ -2091,6 +2100,27 @@ body {
     box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
     overflow: hidden;
     color: #eee;
+    /* Slight overshoot curve so the panel "pops" to full size. */
+    transition:
+        transform 260ms cubic-bezier(0.22, 1.25, 0.36, 1),
+        opacity 180ms ease;
+    transform-origin: center center;
+    will-change: transform, opacity;
+}
+
+.hover-preview.is-visible .hover-preview-panel {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .hover-preview,
+    .hover-preview-panel {
+        transition-duration: 0ms !important;
+    }
+    .hover-preview-panel {
+        transform: translate(-50%, -50%) scale(1);
+    }
 }
 
 .hover-preview-thumb {

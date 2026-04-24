@@ -47,8 +47,11 @@ for (const [name, src] of [['live', LIVE], ['static', STATIC]] as const) {
             expect(src).toContain('hoverPreviewVideoId');
         });
 
-        test('clicking the backdrop dismisses the popup', () => {
-            expect(src).toContain("classList.contains('hover-preview-backdrop')");
+        test('dismisses when the pointer leaves both the card and the popup', () => {
+            // Card's mouseleave delegates to popup if the pointer moved into it,
+            // and the popup's own mouseleave hides it unless heading back to a card.
+            expect(src).toContain("closest('#hoverPreview')");
+            expect(src).toContain("closest('.video-card[data-video-id]')");
             expect(src).toMatch(/function hideHoverPreview\(/);
         });
 
@@ -100,6 +103,24 @@ for (const [name, css] of [['live', LIVE_CSS], ['static', STATIC_CSS]] as const)
 
         test('no stale in-card hover panel styles remain', () => {
             expect(css).not.toContain('.video-card-hover-details');
+        });
+
+        test('panel scales up from a smaller starting size (grow animation)', () => {
+            // Starting state is smaller than 1 and transitions to scale(1)
+            expect(css).toMatch(/\.hover-preview-panel[\s\S]*?transform:\s*translate\(-50%,\s*-50%\)\s*scale\(0\.\d+\)/);
+            expect(css).toMatch(/\.hover-preview\.is-visible\s+\.hover-preview-panel[\s\S]*?transform:\s*translate\(-50%,\s*-50%\)\s*scale\(1\)/);
+        });
+
+        test('panel has a transition on transform', () => {
+            expect(css).toMatch(/\.hover-preview-panel[\s\S]*?transition:[\s\S]*?transform/);
+        });
+
+        test('respects prefers-reduced-motion', () => {
+            expect(css).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)/);
+        });
+
+        test('backdrop is non-interactive so it cannot steal hover from the card', () => {
+            expect(css).toMatch(/\.hover-preview-backdrop[\s\S]*?pointer-events:\s*none/);
         });
     });
 }

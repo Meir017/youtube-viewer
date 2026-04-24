@@ -1845,12 +1845,13 @@ function getHoverPreviewEl() {
     el.id = 'hoverPreview';
     el.className = 'hover-preview';
     el.setAttribute('aria-hidden', 'true');
-    // Clicking the backdrop (but not the inner panel) dismisses it
-    el.addEventListener('click', (ev) => {
-        const target = ev.target as HTMLElement;
-        if (target && target.classList && target.classList.contains('hover-preview-backdrop')) {
-            hideHoverPreview();
-        }
+    // When the pointer leaves the popup entirely (not moving back onto the
+    // originating card), dismiss it. This keeps the description scrollable
+    // because the panel itself is still pointer-interactive.
+    el.addEventListener('mouseleave', (ev) => {
+        const next = (ev as MouseEvent).relatedTarget as HTMLElement | null;
+        if (next && next.closest && next.closest('.video-card[data-video-id]')) return;
+        hideHoverPreview();
     });
     document.body.appendChild(el);
     hoverPreviewEl = el;
@@ -1910,6 +1911,10 @@ function showHoverPreviewFor(card) {
     const el = getHoverPreviewEl();
     hoverPreviewVideoId = videoId;
     el.innerHTML = buildHoverPreviewHtml(video);
+    // Force a reflow before toggling `is-visible` so the browser commits the
+    // starting state (opacity 0 / scale 0.86) before the transition runs. Without
+    // this, the very first hover can flash in at full size.
+    void (el as HTMLElement).offsetWidth;
     el.classList.add('is-visible');
     el.setAttribute('aria-hidden', 'false');
 
@@ -1955,6 +1960,12 @@ function handleCardLeave(e) {
         clearTimeout(t);
         hoverTimers.delete(card);
     }
+    // If the pointer moved into the popup (panel or backdrop), keep it open —
+    // the popup's own mouseleave handler will dismiss when the pointer leaves
+    // it as well. Without this check the popup would close the instant its
+    // backdrop covered the card, because the card's mouseleave fires.
+    const next = (e as MouseEvent).relatedTarget as HTMLElement | null;
+    if (next && next.closest && next.closest('#hoverPreview')) return;
     hideHoverPreview();
 }
 
