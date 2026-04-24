@@ -1171,104 +1171,127 @@ body {
     border-color: #a855f7;
 }
 
-
-/* ── Hover-to-expand video card preview ───────────────────────────── */
-.video-thumbnail {
-    border-radius: 12px 12px 0 0;
-    overflow: hidden;
+/* ── Hover-to-popup video card preview ─────────────────────────────── */
+/* A single shared element in document.body, populated by JS on hover
+   dwell (see app.ts). Appears centered over the page with a big thumbnail
+   and a scrollable description. Dismissed on mouseleave or backdrop click. */
+.hover-preview {
+    position: fixed;
+    inset: 0;
+    z-index: 9500;
+    display: none;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 160ms ease;
 }
 
-.video-card-hover-details {
+.hover-preview.is-visible {
+    display: block;
+    pointer-events: auto;
+    opacity: 1;
+}
+
+.hover-preview-backdrop {
     position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    z-index: 51;
-    margin-top: 6px;
-    padding: 16px;
-    background: rgba(20, 20, 20, 0.98);
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+}
+
+.hover-preview-panel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(720px, calc(100vw - 32px));
+    max-height: calc(100vh - 64px);
+    display: flex;
+    flex-direction: column;
+    background: rgba(18, 18, 18, 0.98);
     border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 12px;
-    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.55);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transform: translateY(-6px);
-    transition: opacity 160ms ease, transform 160ms ease, visibility 0s linear 160ms;
+    border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
     color: #eee;
 }
 
-.video-card-hover-details .hover-title {
-    font-size: 1rem;
+.hover-preview-thumb {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    display: block;
+    background: #000;
+    flex: 0 0 auto;
+}
+
+.hover-preview-body {
+    padding: 18px 22px 20px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.hover-preview-body .hover-title {
+    font-size: 1.15rem;
     font-weight: 600;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     line-height: 1.3;
 }
 
-.video-card-hover-details .hover-meta,
-.video-card-hover-details .hover-imdb {
+.hover-preview-body .hover-meta,
+.hover-preview-body .hover-imdb {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
-    font-size: 0.82rem;
+    gap: 12px;
+    font-size: 0.85rem;
     color: rgba(255, 255, 255, 0.72);
-    margin-bottom: 8px;
+    margin-bottom: 10px;
 }
 
-.video-card-hover-details .hover-imdb {
+.hover-preview-body .hover-imdb {
     color: #f5c518;
 }
 
-.video-card-hover-details .hover-imdb-votes {
+.hover-preview-body .hover-imdb-votes {
     color: rgba(245, 197, 24, 0.75);
     font-weight: 400;
 }
 
-.video-card-hover-details .hover-channel {
+.hover-preview-body .hover-channel {
     color: rgba(255, 100, 100, 0.9);
 }
 
-.video-card-hover-details .hover-description {
-    max-height: 180px;
+.hover-preview-body .hover-description {
+    max-height: 260px;
     overflow-y: auto;
     white-space: pre-wrap;
-    font-size: 0.85rem;
-    line-height: 1.5;
-    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.9rem;
+    line-height: 1.55;
+    color: rgba(255, 255, 255, 0.88);
     padding-right: 6px;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
-    padding-top: 8px;
+    padding-top: 10px;
+    margin-top: 4px;
     overscroll-behavior: contain;
 }
 
-.video-card-hover-details .hover-description.is-loading,
-.video-card-hover-details .hover-description.is-empty {
+.hover-preview-body .hover-description.is-loading,
+.hover-preview-body .hover-description.is-empty {
     color: rgba(255, 255, 255, 0.45);
     font-style: italic;
 }
 
-.video-card-hover-details .hover-description::-webkit-scrollbar {
-    width: 6px;
+.hover-preview-body .hover-description::-webkit-scrollbar,
+.hover-preview-body::-webkit-scrollbar {
+    width: 8px;
 }
-.video-card-hover-details .hover-description::-webkit-scrollbar-thumb {
+.hover-preview-body .hover-description::-webkit-scrollbar-thumb,
+.hover-preview-body::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.2);
-    border-radius: 3px;
+    border-radius: 4px;
 }
 
-@media (hover: hover) and (pointer: fine) {
-    .video-card:hover {
-        z-index: 50;
-        overflow: visible;
-        transform: translateY(-5px) scale(1.03);
-    }
-
-    .video-card:hover .video-card-hover-details {
-        opacity: 1;
-        visibility: visible;
-        pointer-events: auto;
-        transform: translateY(0);
-        transition: opacity 160ms ease 320ms, transform 160ms ease 320ms, visibility 0s linear 320ms;
-    }
+/* Disable the popup entirely on touch-only devices */
+@media not all and (hover: hover) and (pointer: fine) {
+    .hover-preview { display: none !important; }
 }
-
-.short-card .video-card-hover-details { display: none; }

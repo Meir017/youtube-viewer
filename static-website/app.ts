@@ -811,7 +811,7 @@ function renderVideoCard(video) {
     const avatarUrl = channelAvatar || '';
     
     // Store video data in registry to avoid inline JSON escaping issues
-    const videoData = { videoId, title, viewCount, publishedTime, publishDate, description, channelTitle, imdb };
+    const videoData = { videoId, title, viewCount, publishedTime, publishDate, description, duration, channelTitle, channelHandle, channelAvatar, thumbnail, imdb };
     videoDataRegistry.set(videoId, videoData);
     
     // Date display: show exact date if enriched, otherwise relative time
@@ -831,32 +831,6 @@ function renderVideoCard(video) {
     // IMDB genres below meta
     const imdbGenres = imdb && imdb.genres ? `<div class="imdb-genres">${imdb.genres.split(',').map(g => `<span class="imdb-genre-tag">${escapeHtml(g.trim())}</span>`).join('')}</div>` : '';
 
-    // Extra IMDB metadata for the hover panel (see live site for rationale).
-    let hoverImdbBlock = '';
-    if (imdb) {
-        const bits = [];
-        if (imdb.averageRating) bits.push(`<span class="hover-imdb-rating">⭐ ${escapeHtml(imdb.averageRating)}/10${imdb.numVotes ? ` <span class="hover-imdb-votes">(${Number(imdb.numVotes).toLocaleString()} votes)</span>` : ''}</span>`);
-        if (imdb.startYear && imdb.startYear !== '\\N') bits.push(`<span>${escapeHtml(imdb.startYear)}</span>`);
-        if (imdb.runtimeMinutes && imdb.runtimeMinutes !== '\\N') bits.push(`<span>${escapeHtml(imdb.runtimeMinutes)} min</span>`);
-        if (imdb.genres) bits.push(`<span>${imdb.genres.split(',').map(g => escapeHtml(g.trim())).join(' · ')}</span>`);
-        if (bits.length) hoverImdbBlock = `<div class="hover-imdb">${bits.join('')}</div>`;
-    }
-
-    // Hover-expand panel. Hidden by default via CSS; populated on first hover.
-    const hoverDetails = `
-        <div class="video-card-hover-details" aria-hidden="true">
-            <div class="hover-title">${escapeHtml(title)}</div>
-            <div class="hover-meta">
-                ${duration ? `<span>⏱ ${escapeHtml(duration)}</span>` : ''}
-                ${viewCount ? `<span>👁️ ${escapeHtml(viewCount)}</span>` : ''}
-                ${dateDisplay ? `<span>${dateDisplay}</span>` : ''}
-                ${channelTitle ? `<span class="hover-channel">${escapeHtml(channelTitle)}</span>` : ''}
-            </div>
-            ${hoverImdbBlock}
-            <div class="hover-description is-loading" onclick="event.stopPropagation()">Loading description…</div>
-        </div>
-    `;
-
     return `
         <article class="video-card" data-video-id="${videoId}" onmouseenter="handleCardHover(event)" onmouseleave="handleCardLeave(event)" onclick="openVideoModalById('${videoId}')" style="cursor: pointer;">
             <div class="video-thumbnail">
@@ -874,7 +848,6 @@ function renderVideoCard(video) {
                 </div>
                 ${imdbGenres}
             </div>
-            ${hoverDetails}
         </article>
     `;
 }
@@ -976,37 +949,114 @@ async function loadVideoDescription(videoId) {
     return description;
 }
 
-// ── Hover-to-expand preview ──────────────────────────────────────────
+// ── Hover-to-popup preview ───────────────────────────────────────────
 const HOVER_DWELL_MS = 350;
 const hoverTimers = new WeakMap();
+let hoverPreviewEl: any = null;
+let hoverPreviewVideoId: string | null = null;
+
+function getHoverPreviewEl() {
+    if (hoverPreviewEl) return hoverPreviewEl;
+    const el = document.createElement('div');
+    el.id = 'hoverPreview';
+    el.className = 'hover-preview';
+    el.setAttribute('aria-hidden', 'true');
+    el.addEventListener('click', (ev) => {
+        const target = ev.target as HTMLElement;
+        if (target && target.classList && target.classList.contains('hover-preview-backdrop')) {
+            hideHoverPreview();
+        }
+    });
+    document.body.appendChild(el);
+    hoverPreviewEl = el;
+    return el;
+}
+
+function hideHoverPreview() {
+    if (!hoverPreviewEl) return;
+    hoverPreviewEl.classList.remove('is-visible');
+    hoverPreviewEl.setAttribute('aria-hidden', 'true');
+    hoverPreviewVideoId = null;
+}
+
+function buildHoverPreviewHtml(video) {
+    const title = escapeHtml(video.title || '');
+    const thumb = video.thumbnail ? `<img class="hover-preview-thumb" src="${video.thumbnail}" alt="${title}">` : '';
+
+    let dateDisplay = '';
+    if (video.publishDate) dateDisplay = `📅 ${escapeHtml(video.publishDate)}`;
+    else if (video.publishedTime) dateDisplay = `📅 ${escapeHtml(video.publishedTime)}`;
+
+    const metaBits = [];
+    if (video.duration) metaBits.push(`<span>⏱ ${escapeHtml(video.duration)}</span>`);
+    if (video.viewCount) metaBits.push(`<span>👁️ ${escapeHtml(video.viewCount)}</span>`);
+    if (dateDisplay) metaBits.push(`<span>${dateDisplay}</span>`);
+    if (video.channelTitle) metaBits.push(`<span class="hover-channel">${escapeHtml(video.channelTitle)}</span>`);
+
+    let imdbHtml = '';
+    if (video.imdb) {
+        const b = [];
+        if (video.imdb.averageRating) b.push(`<span class="hover-imdb-rating">⭐ ${escapeHtml(video.imdb.averageRating)}/10${video.imdb.numVotes ? ` <span class="hover-imdb-votes">(${Number(video.imdb.numVotes).toLocaleString()} votes)</span>` : ''}</span>`);
+        if (video.imdb.startYear && video.imdb.startYear !== '\\N') b.push(`<span>${escapeHtml(video.imdb.startYear)}</span>`);
+        if (video.imdb.runtimeMinutes && video.imdb.runtimeMinutes !== '\\N') b.push(`<span>${escapeHtml(video.imdb.runtimeMinutes)} min</span>`);
+        if (video.imdb.genres) b.push(`<span>${video.imdb.genres.split(',').map(g => escapeHtml(g.trim())).join(' · ')}</span>`);
+        if (b.length) imdbHtml = `<div class="hover-imdb">${b.join('')}</div>`;
+    }
+
+    return `
+        <div class="hover-preview-backdrop"></div>
+        <div class="hover-preview-panel" role="dialog" aria-label="${title}">
+            ${thumb}
+            <div class="hover-preview-body">
+                <div class="hover-title">${title}</div>
+                ${metaBits.length ? `<div class="hover-meta">${metaBits.join('')}</div>` : ''}
+                ${imdbHtml}
+                <div class="hover-description is-loading">Loading description…</div>
+            </div>
+        </div>
+    `;
+}
+
+function showHoverPreviewFor(card) {
+    const videoId = card.dataset.videoId;
+    if (!videoId) return;
+    const video = videoDataRegistry.get(videoId);
+    if (!video) return;
+    const el = getHoverPreviewEl();
+    hoverPreviewVideoId = videoId;
+    el.innerHTML = buildHoverPreviewHtml(video);
+    el.classList.add('is-visible');
+    el.setAttribute('aria-hidden', 'false');
+
+    const descEl = el.querySelector('.hover-description');
+    if (!descEl) return;
+    loadVideoDescription(videoId)
+        .then((desc) => {
+            if (hoverPreviewVideoId !== videoId) return;
+            descEl.classList.remove('is-loading');
+            if (desc) {
+                descEl.innerHTML = linkifyText(desc);
+            } else {
+                descEl.textContent = 'No description available';
+                descEl.classList.add('is-empty');
+            }
+        })
+        .catch(() => {
+            if (hoverPreviewVideoId !== videoId) return;
+            descEl.classList.remove('is-loading');
+            descEl.textContent = 'Description unavailable';
+            descEl.classList.add('is-empty');
+        });
+}
 
 function handleCardHover(e) {
     const card = e.currentTarget;
     if (!card || !card.dataset) return;
-    const videoId = card.dataset.videoId;
-    if (!videoId) return;
     const existing = hoverTimers.get(card);
     if (existing) clearTimeout(existing);
     const timer = setTimeout(() => {
         hoverTimers.delete(card);
-        const descEl = card.querySelector('.hover-description');
-        if (!descEl || descEl.dataset.loaded === '1') return;
-        descEl.dataset.loaded = '1';
-        loadVideoDescription(videoId)
-            .then((desc) => {
-                descEl.classList.remove('is-loading');
-                if (desc) {
-                    descEl.innerHTML = linkifyText(desc);
-                } else {
-                    descEl.textContent = 'No description available';
-                    descEl.classList.add('is-empty');
-                }
-            })
-            .catch(() => {
-                descEl.classList.remove('is-loading');
-                descEl.textContent = 'Description unavailable';
-                descEl.classList.add('is-empty');
-            });
+        showHoverPreviewFor(card);
     }, HOVER_DWELL_MS);
     hoverTimers.set(card, timer);
 }
@@ -1019,6 +1069,7 @@ function handleCardLeave(e) {
         clearTimeout(t);
         hoverTimers.delete(card);
     }
+    hideHoverPreview();
 }
 
 function showLoading(show) {
