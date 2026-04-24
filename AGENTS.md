@@ -66,6 +66,31 @@ bun run generator/index.ts --channel=@GitHub --html --output=output.html
 
 This project has comprehensive automated tests. See [TESTING.md](./TESTING.md) for the full guide.
 
+### Testing expectations for changes
+
+**Most changes require tests.** When adding features, fixing bugs, or changing
+behavior, add or update tests in the same change. Prefer:
+
+- **Unit tests** for pure logic, parsers, matchers, formatters, and reducers.
+- **Integration tests** for API flows, storage, and cross-module contracts.
+- **E2E tests** (Playwright) for user-visible UI behavior.
+
+Before opening a PR, run at least `bun test tests/unit tests/integration` and
+`bun run tsc --noEmit` and make sure both are green.
+
+Exceptions where tests may be omitted (still run the full suite to confirm no
+regressions):
+
+- Documentation-only changes (README, AGENTS.md, inline docstrings, comments).
+- Pure cosmetic changes (whitespace, formatting, import reordering).
+- CLI UX polish with no behavioral change (colors, log wording, progress
+  indicators). Add tests if the change introduces new branching logic.
+- One-off tooling/scripts that run manually and have no reusable logic.
+
+If a change is genuinely hard to test (complex browser interactions, external
+APIs without a mock seam), add a short note in the commit/PR explaining why
+and cover the logic with a smaller unit test around any extractable helper.
+
 ### Quick Test Commands
 
 ```bash
