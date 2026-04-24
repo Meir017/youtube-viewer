@@ -15,6 +15,7 @@
 import { createReadStream, existsSync } from 'fs';
 import { createGunzip } from 'zlib';
 import path from 'path';
+import { createProgress } from './progress';
 
 // ── Types matching actual IMDB TSV schemas ───────────────────────────
 
@@ -53,16 +54,23 @@ const NULL_MARKER = '\\N';
  * Fast line-by-line reader for gzipped TSV files.
  * Uses chunk-based parsing instead of readline for better performance
  * on large files (name.basics is 15M rows, title.principals is 98M rows).
+ *
+ * When `progressLabel` is provided, a throttled progress line is emitted to
+ * stdout showing rows scanned, rate, and elapsed time. The label should be
+ * a short human-readable description (e.g. "📥 title.basics").
  */
 async function processGzipTsv(
     filePath: string,
     onRow: (cols: string[]) => void,
+    progressLabel?: string,
 ): Promise<void> {
     const gunzip = createGunzip();
     const stream = createReadStream(filePath).pipe(gunzip);
 
     let remainder = '';
     let isHeader = true;
+    let rowCount = 0;
+    const progress = progressLabel ? createProgress(progressLabel) : null;
 
     for await (const chunk of stream) {
         const data = remainder + (chunk as Buffer).toString('utf-8');
@@ -79,7 +87,10 @@ async function processGzipTsv(
             const trimmed = line.endsWith('\r') ? line.slice(0, -1) : line;
             if (trimmed.length === 0) continue;
             onRow(trimmed.split('\t'));
+            rowCount++;
         }
+
+        progress?.tick(rowCount);
     }
 
     // Process any remaining data
@@ -87,8 +98,11 @@ async function processGzipTsv(
         const trimmed = remainder.endsWith('\r') ? remainder.slice(0, -1) : remainder;
         if (trimmed.length > 0) {
             onRow(trimmed.split('\t'));
+            rowCount++;
         }
     }
+
+    progress?.done();
 }
 
 // ── Individual dataset parsers ───────────────────────────────────────
@@ -100,7 +114,10 @@ async function processGzipTsv(
  * Columns (9):
  *   tconst | titleType | primaryTitle | originalTitle | isAdult | startYear | endYear | runtimeMinutes | genres
  */
-export async function parseTitleBasics(imdbDir: string): Promise<Map<string, TitleBasics>> {
+export async function parseTitleBasics(
+    imdbDir: string,
+    progressLabel?: string,
+): Promise<Map<string, TitleBasics>> {
     const filePath = path.join(imdbDir, 'title.basics.tsv.gz');
     const map = new Map<string, TitleBasics>();
     let total = 0;
@@ -121,7 +138,7 @@ export async function parseTitleBasics(imdbDir: string): Promise<Map<string, Tit
             runtimeMinutes: cols[7],
             genres: cols[8],
         });
-    });
+    }, progressLabel);
 
     console.log(`   title.basics: ${total.toLocaleString()} rows scanned, ${map.size.toLocaleString()} relevant titles kept`);
     return map;
@@ -133,7 +150,10 @@ export async function parseTitleBasics(imdbDir: string): Promise<Map<string, Tit
  * Columns (3):
  *   tconst | averageRating | numVotes
  */
-export async function parseTitleRatings(imdbDir: string): Promise<Map<string, TitleRating>> {
+export async function parseTitleRatings(
+    imdbDir: string,
+    progressLabel?: string,
+): Promise<Map<string, TitleRating>> {
     const filePath = path.join(imdbDir, 'title.ratings.tsv.gz');
     const map = new Map<string, TitleRating>();
 
@@ -142,7 +162,7 @@ export async function parseTitleRatings(imdbDir: string): Promise<Map<string, Ti
             averageRating: cols[1],
             numVotes: cols[2],
         });
-    });
+    }, progressLabel);
 
     console.log(`   title.ratings: ${map.size.toLocaleString()} entries`);
     return map;
@@ -174,6 +194,7 @@ export async function parseNameBasics(imdbDir: string): Promise<Map<string, stri
 export async function parseNameBasicsFiltered(
     imdbDir: string,
     neededNconsts: Set<string>,
+    progressLabel?: string,
 ): Promise<Map<string, string>> {
     const filePath = path.join(imdbDir, 'name.basics.tsv.gz');
     const map = new Map<string, string>();
@@ -184,7 +205,7 @@ export async function parseNameBasicsFiltered(
         if (neededNconsts.has(cols[0])) {
             map.set(cols[0], cols[1]);
         }
-    });
+    }, progressLabel);
 
     console.log(`   name.basics: ${scanned.toLocaleString()} rows scanned, ${map.size.toLocaleString()} names kept`);
     return map;
@@ -202,6 +223,7 @@ export async function parseTitlePrincipals(
     imdbDir: string,
     relevantTconsts: Set<string>,
     maxCastPerTitle: number = 5,
+    progressLabel?: string,
 ): Promise<Map<string, string[]>> {
     const filePath = path.join(imdbDir, 'title.principals.tsv.gz');
     const map = new Map<string, string[]>();
@@ -224,7 +246,7 @@ export async function parseTitlePrincipals(
         } else if (existing.length < maxCastPerTitle) {
             existing.push(nconst);
         }
-    });
+    }, progressLabel);
 
     console.log(`   title.principals: ${scanned.toLocaleString()} rows scanned, cast for ${map.size.toLocaleString()} titles`);
     return map;
@@ -252,8 +274,8 @@ export interface LoadOptions {
 export async function loadImdbDatasets(imdbDir: string, options: LoadOptions = {}): Promise<ImdbDataset> {
     console.log(`📦 Loading IMDB datasets from ${imdbDir}`);
 
-    const titles = await parseTitleBasics(imdbDir);
-    const ratings = await parseTitleRatings(imdbDir);
+    const titles = await parseTitleBasics(imdbDir, '  📥 title.basics');
+    const ratings = await parseTitleRatings(imdbDir, '  📥 title.ratings');
 
     let names = new Map<string, string>();
     let cast = new Map<string, string[]>();
@@ -264,13 +286,13 @@ export async function loadImdbDatasets(imdbDir: string, options: LoadOptions = {
 
         if (existsSync(namesPath) && existsSync(principalsPath)) {
             const relevantTconsts = new Set(titles.keys());
-            cast = await parseTitlePrincipals(imdbDir, relevantTconsts);
+            cast = await parseTitlePrincipals(imdbDir, relevantTconsts, 5, '  📥 title.principals');
             // Only load names that appear in cast to save memory
             const neededNconsts = new Set<string>();
             for (const nconsts of cast.values()) {
                 for (const nc of nconsts) neededNconsts.add(nc);
             }
-            names = await parseNameBasicsFiltered(imdbDir, neededNconsts);
+            names = await parseNameBasicsFiltered(imdbDir, neededNconsts, '  📥 name.basics');
         } else {
             console.log(`   ⚠ Missing name.basics or title.principals — skipping cast data`);
         }
@@ -299,14 +321,14 @@ export async function loadCastForTitles(
     }
 
     console.log(`📦 Loading cast data for ${matchedTconsts.size.toLocaleString()} matched titles...`);
-    const cast = await parseTitlePrincipals(imdbDir, matchedTconsts);
+    const cast = await parseTitlePrincipals(imdbDir, matchedTconsts, 5, '  📥 title.principals');
 
     const neededNconsts = new Set<string>();
     for (const nconsts of cast.values()) {
         for (const nc of nconsts) neededNconsts.add(nc);
     }
     console.log(`   Need ${neededNconsts.size.toLocaleString()} person names`);
-    const names = await parseNameBasicsFiltered(imdbDir, neededNconsts);
+    const names = await parseNameBasicsFiltered(imdbDir, neededNconsts, '  📥 name.basics');
 
     return { names, cast };
 }
