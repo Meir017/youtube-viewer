@@ -2049,67 +2049,53 @@ body {
 }
 
 /* ── Hover-to-popup video card preview ─────────────────────────────── */
-/* A single shared element in document.body, populated by JS on hover
-   dwell (see app.ts). Appears centered over the page with a big thumbnail
-   and a scrollable description. Dismissed on mouseleave or backdrop click. */
+/* Netflix / Apple TV-style in-place zoom. A single shared element in
+   document.body is anchored to the hovered card's bounding rect via inline
+   styles (top/left/width/transform-origin). The panel starts at a
+   card-sized scale and transitions to its full (larger) size, so the card
+   appears to grow in place. Dismissed on mouseleave, scroll or resize. */
 .hover-preview {
     position: fixed;
     inset: 0;
     z-index: 9500;
-    opacity: 0;
-    visibility: hidden;
+    /* Wrapper never captures pointer events — otherwise it would steal hover
+       from the card underneath and cause the popup to oscillate open/closed. */
     pointer-events: none;
-    /* Delay flipping visibility back to `hidden` until after the fade-out. */
-    transition: opacity 180ms ease, visibility 0s linear 180ms;
+    visibility: hidden;
+    /* Hold visibility until the fade-out completes. */
+    transition: visibility 0s linear 280ms;
 }
 
 .hover-preview.is-visible {
-    opacity: 1;
     visibility: visible;
-    pointer-events: auto;
-    transition: opacity 180ms ease, visibility 0s linear 0s;
-}
-
-.hover-preview-backdrop {
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    backdrop-filter: blur(3px);
-    -webkit-backdrop-filter: blur(3px);
-    /* Intentionally non-interactive: if the backdrop captured pointer events
-       it would steal the mouse from the hovered card and cause the popup to
-       oscillate open/closed. The panel below keeps pointer-events: auto so
-       the description remains scrollable. */
-    pointer-events: none;
+    transition: visibility 0s linear 0s;
 }
 
 .hover-preview-panel {
     pointer-events: auto;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%) scale(0.86);
+    /* Anchored to the hovered card via inline top / left / width. */
+    position: fixed;
+    /* transform-origin is set inline per-card based on edge position
+       (left / right / center top) so an edge-of-row card grows inward. */
+    transform: scale(var(--hover-start-scale, 0.72));
     opacity: 0;
-    width: min(720px, calc(100vw - 32px));
-    max-height: calc(100vh - 64px);
     display: flex;
     flex-direction: column;
     background: rgba(18, 18, 18, 0.98);
     border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 14px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+    border-radius: 12px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
     overflow: hidden;
     color: #eee;
-    /* Slight overshoot curve so the panel "pops" to full size. */
+    /* Gentle overshoot curve ("pop in") on the growth, fast fade on opacity. */
     transition:
-        transform 260ms cubic-bezier(0.22, 1.25, 0.36, 1),
+        transform 280ms cubic-bezier(0.22, 1.25, 0.36, 1),
         opacity 180ms ease;
-    transform-origin: center center;
     will-change: transform, opacity;
 }
 
 .hover-preview.is-visible .hover-preview-panel {
-    transform: translate(-50%, -50%) scale(1);
+    transform: scale(1);
     opacity: 1;
 }
 
@@ -2119,7 +2105,7 @@ body {
         transition-duration: 0ms !important;
     }
     .hover-preview-panel {
-        transform: translate(-50%, -50%) scale(1);
+        transform: scale(1);
     }
 }
 
@@ -2133,15 +2119,16 @@ body {
 }
 
 .hover-preview-body {
-    padding: 18px 22px 20px;
+    padding: 14px 18px 16px;
     overflow-y: auto;
     overscroll-behavior: contain;
+    max-height: 320px;
 }
 
 .hover-preview-body .hover-title {
-    font-size: 1.15rem;
+    font-size: 1.05rem;
     font-weight: 600;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     line-height: 1.3;
 }
 
@@ -2149,10 +2136,10 @@ body {
 .hover-preview-body .hover-imdb {
     display: flex;
     flex-wrap: wrap;
-    gap: 12px;
-    font-size: 0.85rem;
+    gap: 10px;
+    font-size: 0.8rem;
     color: rgba(255, 255, 255, 0.72);
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 
 .hover-preview-body .hover-imdb {
@@ -2169,15 +2156,15 @@ body {
 }
 
 .hover-preview-body .hover-description {
-    max-height: 260px;
+    max-height: 180px;
     overflow-y: auto;
     white-space: pre-wrap;
-    font-size: 0.9rem;
-    line-height: 1.55;
+    font-size: 0.85rem;
+    line-height: 1.5;
     color: rgba(255, 255, 255, 0.88);
     padding-right: 6px;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
-    padding-top: 10px;
+    padding-top: 8px;
     margin-top: 4px;
     overscroll-behavior: contain;
 }

@@ -961,12 +961,9 @@ function getHoverPreviewEl() {
     el.id = 'hoverPreview';
     el.className = 'hover-preview';
     el.setAttribute('aria-hidden', 'true');
-    el.addEventListener('mouseleave', (ev) => {
-        const next = (ev as MouseEvent).relatedTarget as HTMLElement | null;
-        if (next && next.closest && next.closest('.video-card[data-video-id]')) return;
-        hideHoverPreview();
-    });
     document.body.appendChild(el);
+    window.addEventListener('scroll', () => { if (hoverPreviewVideoId) hideHoverPreview(); }, { passive: true, capture: true });
+    window.addEventListener('resize', () => { if (hoverPreviewVideoId) hideHoverPreview(); });
     hoverPreviewEl = el;
     return el;
 }
@@ -1003,7 +1000,6 @@ function buildHoverPreviewHtml(video) {
     }
 
     return `
-        <div class="hover-preview-backdrop"></div>
         <div class="hover-preview-panel" role="dialog" aria-label="${title}">
             ${thumb}
             <div class="hover-preview-body">
@@ -1024,6 +1020,40 @@ function showHoverPreviewFor(card) {
     const el = getHoverPreviewEl();
     hoverPreviewVideoId = videoId;
     el.innerHTML = buildHoverPreviewHtml(video);
+
+    // Netflix / Apple-TV-style in-place zoom. See website/public/app.ts for
+    // the companion implementation and the shared design notes.
+    const rect = card.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const GROWTH = 1.35;
+    const panelWidth = Math.min(Math.max(rect.width * GROWTH, 300), 560);
+    const edgeGap = 140;
+    let originX: string;
+    let left: number;
+    if (rect.left < edgeGap) {
+        originX = 'left';
+        left = rect.left;
+    } else if (vw - rect.right < edgeGap) {
+        originX = 'right';
+        left = rect.right - panelWidth;
+    } else {
+        originX = 'center';
+        left = rect.left + (rect.width - panelWidth) / 2;
+    }
+    const panel = el.querySelector('.hover-preview-panel') as HTMLElement;
+    if (panel) {
+        panel.style.top = `${rect.top}px`;
+        panel.style.left = `${left}px`;
+        panel.style.width = `${panelWidth}px`;
+        panel.style.transformOrigin = `${originX} top`;
+        const startScale = rect.width / panelWidth;
+        panel.style.setProperty('--hover-start-scale', String(startScale));
+        panel.addEventListener('mouseleave', (ev) => {
+            const next = (ev as MouseEvent).relatedTarget as HTMLElement | null;
+            if (next && next.closest && next.closest('.video-card[data-video-id]')) return;
+            hideHoverPreview();
+        });
+    }
     // Force a reflow so the scale-up animation runs on the very first hover.
     void (el as HTMLElement).offsetWidth;
     el.classList.add('is-visible');
