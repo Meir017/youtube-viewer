@@ -49,6 +49,9 @@ bun run generator/index.ts --channel=@GitHub --html --output=output.html
   - `enrich.ts` - Video enrichment tool
   - `refresh.ts` - Channel refresh tool
   - `build-static.ts` - Static site build tool
+  - `download-imdb.ts` - Download the IMDB Non-Commercial dataset .tsv.gz files
+  - `import-imdb.ts` - Import the .tsv.gz files into a local SQLite DB (`data/imdb/imdb.sqlite`)
+  - `enrich-imdb.ts` - Match YouTube titles against the SQLite DB and write `imdb` data onto videos
 - `static-website/` - Static website source files (no backend required)
   - `index.html` - Read-only HTML (no mutation UI)
   - `app.js` - JavaScript that loads local index.json metadata and lazy-loads per-collection data files
@@ -154,4 +157,23 @@ bun run podcasts
 - `Bun.serve()` - HTTP server
 - `Bun.file()` - File operations
 - `Bun.write()` - Write files
+- `bun:sqlite` - Local SQLite (used by the IMDB pipeline)
 - Native fetch API for YouTube requests
+
+## IMDB Enrichment Workflow
+
+The IMDB pipeline is a three-step process. Step 2 builds a SQLite database
+from the raw .tsv.gz files; step 3 reads from that DB.
+
+```bash
+# 1. Download raw .tsv.gz files (~1.8 GB) into data/imdb/
+bun run tools:download-imdb
+
+# 2. Import them into data/imdb/imdb.sqlite (one-time, several minutes).
+#    Re-running is a no-op when sources are unchanged; use --force to redo.
+bun run tools:import-imdb
+
+# 3. Enrich website videos against the DB. Errors out with a clear message
+#    if the DB is missing or stale (sources changed since last import).
+bun run tools:enrich-imdb
+```
