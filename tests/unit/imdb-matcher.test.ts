@@ -1,18 +1,22 @@
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, beforeAll } from 'bun:test';
 import path from 'path';
+import { tmpdir } from 'os';
+import { mkdtempSync } from 'fs';
 import {
     extractTitleCandidates,
     extractTitleCandidatesFromDescription,
     normalizeTitle,
     ImdbTitleIndex,
 } from '../../website-tools/imdb-matcher';
-import { parseTitleBasics, parseTitleRatings, type ImdbDataset } from '../../website-tools/imdb-parser';
+import { openImdbDb } from '../../website-tools/imdb-db';
+import { runImport } from '../../website-tools/import-imdb';
+import type { Database } from 'bun:sqlite';
 
 const FIXTURES_DIR = path.join(import.meta.dir, '..', 'fixtures', 'imdb');
 
 describe('extractTitleCandidates', () => {
     test('extracts title from pipe-separated format', () => {
-        const { candidates, year } = extractTitleCandidates('Oppenheimer | Official Trailer');
+        const { candidates } = extractTitleCandidates('Oppenheimer | Official Trailer');
         expect(candidates[0].toLowerCase()).toContain('oppenheimer');
     });
 
@@ -48,8 +52,6 @@ describe('extractTitleCandidates', () => {
     });
 
     test('does not chop "ft" inside real words like Minecraft', () => {
-        // Regression: the "ft./featuring" stripper used to mangle "A Minecraft Movie"
-        // into "A Minecra" because "ft " appeared mid-word.
         const { candidates } = extractTitleCandidates('A Minecraft Movie | Final Trailer');
         expect(candidates).toContain('A Minecraft Movie');
     });
@@ -61,19 +63,16 @@ describe('extractTitleCandidates', () => {
     });
 
     test('preserves title containing possessive: "All\u2019s Fair"', () => {
-        // Regression: leading-possessive stripper used to collapse "All's Fair" → "Fair".
         const { candidates } = extractTitleCandidates('All\u2019s Fair | Official Trailer | Hulu');
         expect(candidates.some(c => /all.?s fair/i.test(c))).toBe(true);
     });
 
     test('still tries possessive-stripped variant for studio prefixes', () => {
-        // "Lionsgate's Beast" should still produce "Beast" as an additional candidate.
         const { candidates } = extractTitleCandidates("Lionsgate's Beast | Official Trailer");
         expect(candidates).toContain('Beast');
     });
 
     test('adds every non-platform pipe segment as a candidate', () => {
-        // TV-show clips often put the show name in a later segment.
         const { candidates } = extractTitleCandidates(
             "Li\u2019l Sebastian: The Mini Horse | Parks and Recreation"
         );
@@ -84,7 +83,6 @@ describe('extractTitleCandidates', () => {
         const { candidates } = extractTitleCandidates(
             'The Last of Us Season 2 | Official Trailer | Hulu'
         );
-        // "Hulu" should not show up as a standalone candidate
         expect(candidates.every(c => c.toLowerCase() !== 'hulu')).toBe(true);
     });
 
@@ -119,97 +117,81 @@ describe('normalizeTitle', () => {
     });
 
     test('normalizes Unicode curly apostrophes to ASCII', () => {
-        // Regression: the previous regex used ASCII apostrophes twice, so curly
-        // quotes were never normalized and got stripped by the punctuation pass.
         expect(normalizeTitle('All\u2019s Fair')).toBe("all's fair");
         expect(normalizeTitle("That \u201970s Show")).toBe("that '70s show");
     });
 });
 
-describe('ImdbTitleIndex', () => {
-    let dataset: ImdbDataset;
+describe('ImdbTitleIndex (SQLite-backed)', () => {
+    let db: Database;
     let index: ImdbTitleIndex;
 
-    // Load fixture data once
-    const setup = async () => {
-        if (dataset) return;
-        const titles = await parseTitleBasics(FIXTURES_DIR);
-        const ratings = await parseTitleRatings(FIXTURES_DIR);
-        dataset = { titles, ratings, names: new Map(), cast: new Map() };
-        index = new ImdbTitleIndex(dataset);
-    };
+    beforeAll(async () => {
+        const tmpDir = mkdtempSync(path.join(tmpdir(), 'imdb-matcher-test-'));
+        const dbPath = path.join(tmpDir, 'imdb.sqlite');
+        await runImport({ imdbDir: FIXTURES_DIR, dbPath, force: true });
+        db = openImdbDb(dbPath, { readonly: true });
+        index = new ImdbTitleIndex(db);
+    });
 
-    test('matches exact title', async () => {
-        await setup();
+    test('matches exact title', () => {
         const result = index.match('The Dark Knight | Official Trailer');
         expect(result).not.toBeNull();
         expect(result!.tconst).toBe('tt0468569');
         expect(result!.title.primaryTitle).toBe('The Dark Knight');
     });
 
-    test('matches with year disambiguation', async () => {
-        await setup();
-        // There are two "Oppenheimer" entries: 2023 (tt15398776) and 1980 (tt1234567)
+    test('matches with year disambiguation', () => {
         const result = index.match('Oppenheimer (2023) | Official Trailer');
         expect(result).not.toBeNull();
         expect(result!.tconst).toBe('tt15398776');
         expect(result!.title.startYear).toBe('2023');
     });
 
-    test('prefers higher vote count when no year given', async () => {
-        await setup();
-        // "Oppenheimer" without year should prefer the one with more votes (tt15398776: 850K vs tt1234567: 200)
+    test('prefers higher vote count when no year given', () => {
         const result = index.match('Oppenheimer | New Trailer');
         expect(result).not.toBeNull();
         expect(result!.tconst).toBe('tt15398776');
     });
 
-    test('includes rating data in match result', async () => {
-        await setup();
+    test('includes rating data in match result', () => {
         const result = index.match('Inception | Official Trailer');
         expect(result).not.toBeNull();
-        expect(result!.rating).toBeDefined();
-        expect(result!.rating!.averageRating).toBe('8.8');
-        expect(result!.rating!.numVotes).toBe('2400000');
+        expect(result!.title.averageRating).toBe(8.8);
+        expect(result!.title.numVotes).toBe(2400000);
     });
 
-    test('matches TV series titles', async () => {
-        await setup();
+    test('matches TV series titles', () => {
         const result = index.match('Brooklyn Nine-Nine | Captain Holt Prepares the Squad');
         expect(result).not.toBeNull();
         expect(result!.tconst).toBe('tt2467372');
         expect(result!.title.titleType).toBe('tvSeries');
     });
 
-    test('returns null for unmatched titles', async () => {
-        await setup();
+    test('returns null for unmatched titles', () => {
         const result = index.match('This Movie Does Not Exist At All 2099');
         expect(result).toBeNull();
     });
 
-    test('fuzzy match works for partial titles', async () => {
-        await setup();
+    test('fuzzy match works for partial titles', () => {
         const result = index.match('Game of Thrones Season 8 | Official Trailer | HBO');
         expect(result).not.toBeNull();
         expect(result!.tconst).toBe('tt0944947');
     });
 
-    test('matches "A Minecraft Movie | Final Trailer"', async () => {
-        await setup();
+    test('matches "A Minecraft Movie | Final Trailer"', () => {
         const result = index.match('A Minecraft Movie | Final Trailer');
         expect(result).not.toBeNull();
         expect(result!.tconst).toBe('tt31433814');
     });
 
-    test('matches "All\u2019s Fair | Official Trailer | Hulu" (curly apostrophe)', async () => {
-        await setup();
+    test('matches "All\u2019s Fair | Official Trailer | Hulu" (curly apostrophe)', () => {
         const result = index.match('All\u2019s Fair | Official Trailer | Hulu');
         expect(result).not.toBeNull();
         expect(result!.tconst).toBe('tt26737320');
     });
 
-    test('matches TV show name from later pipe segment', async () => {
-        await setup();
+    test('matches TV show name from later pipe segment', () => {
         const result = index.match(
             "Li\u2019l Sebastian: The Mini Horse, The Myth, The Legend | Parks and Recreation"
         );
@@ -217,37 +199,45 @@ describe('ImdbTitleIndex', () => {
         expect(result!.tconst).toBe('tt0436992');
     });
 
-    test('matches show name from clip title with "Cold Opens" suffix', async () => {
-        await setup();
+    test('matches show name from clip title with "Cold Opens" suffix', () => {
         const result = index.match('Brooklyn Nine-Nine Cold Opens (Season 4)');
         expect(result).not.toBeNull();
         expect(result!.tconst).toBe('tt2467372');
     });
 
-    test('falls back to description when the title has no usable signal', async () => {
-        await setup();
-        // Title with no recognisable movie name — but the description says the show
+    test('falls back to description when the title has no usable signal', () => {
         const desc = 'Watch Parks and Recreation Streaming on Peacock: https://pck.tv/xyz\n\n#Peacock';
         const result = index.match('Some Weird Clip Name That Does Not Exist', null, desc);
         expect(result).not.toBeNull();
         expect(result!.tconst).toBe('tt0436992');
     });
 
-    test('falls back to hashtag-expanded description candidates', async () => {
-        await setup();
+    test('falls back to hashtag-expanded description candidates', () => {
         const desc = 'Stuff happens.\n\n#Peacock #BrooklynNineNine #Comedy';
         const result = index.match('A Completely Unrelated Clip Title', null, desc);
         expect(result).not.toBeNull();
         expect(result!.tconst).toBe('tt2467372');
     });
 
-    test('description fallback does not override a good title match', async () => {
-        await setup();
-        // Title matches Inception; description mentions Oppenheimer.
+    test('description fallback does not override a good title match', () => {
         const desc = 'Watch Oppenheimer Streaming on Peacock';
         const result = index.match('Inception | Official Trailer', null, desc);
         expect(result).not.toBeNull();
         expect(result!.tconst).toBe('tt1375666');
+    });
+
+    test('resolves cast names via SQL JOIN', () => {
+        const result = index.match('The Dark Knight | Official Trailer');
+        expect(result).not.toBeNull();
+        // Fixture has 3 actors for tt0468569, ordered by ordering.
+        expect(result!.castNames).toEqual(['Christian Bale', 'Heath Ledger', 'Michael Caine']);
+    });
+
+    test('returns empty cast for titles with no principals', () => {
+        // Shawshank has no principals in fixture
+        const result = index.match('The Shawshank Redemption | Trailer');
+        expect(result).not.toBeNull();
+        expect(result!.castNames).toEqual([]);
     });
 });
 
@@ -264,7 +254,6 @@ describe('extractTitleCandidatesFromDescription', () => {
             'Great trailer.\n\n#Peacock #JurassicWorldRebirth #Movies'
         );
         expect(cands).toContain('Jurassic World Rebirth');
-        // Platform hashtags are filtered out
         expect(cands.every(c => c.toLowerCase() !== 'peacock')).toBe(true);
     });
 

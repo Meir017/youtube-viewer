@@ -21,8 +21,7 @@
  *   4. If year is available, prefer matches where year matches
  */
 
-import type { TitleBasics, TitleRating, ImdbDataset } from './imdb-parser';
-import { resolveNames, isImdbNull } from './imdb-parser';
+import type { Database, Statement } from 'bun:sqlite';
 import type { ImdbData } from '../generator/types';
 
 // ── Title extraction from YouTube video titles ───────────────────────
@@ -347,51 +346,62 @@ export function normalizeTitle(title: string): string {
 
 // ── IMDB Title Index ─────────────────────────────────────────────────
 
-interface IndexEntry {
+/**
+ * A title row joined with its rating. Shape returned by SQL queries to the
+ * SQLite-backed dataset. `startYear` etc. are nullable here (NULL in the DB
+ * for IMDB '\N' markers); previous Map-based code used the literal '\N' string.
+ */
+export interface MatchedTitle {
     tconst: string;
-    title: TitleBasics;
-    normalizedPrimary: string;
-    normalizedOriginal: string;
+    titleType: string;
+    primaryTitle: string;
+    originalTitle: string;
+    startYear: string | null;
+    endYear: string | null;
+    runtimeMinutes: string | null;
+    genres: string | null;
+    averageRating: number | null;
+    numVotes: number | null;
 }
 
 export interface MatchResult {
     tconst: string;
-    title: TitleBasics;
-    rating: TitleRating | undefined;
+    title: MatchedTitle;
     castNames: string[];
     confidence: 'exact' | 'normalized' | 'fuzzy';
 }
 
+/**
+ * Title matcher backed by a `bun:sqlite` Database produced by `import-imdb`.
+ *
+ * Replaces the previous in-memory Map-based index. All lookups go through
+ * prepared statements; cast resolution is a per-match JOIN against
+ * `principals` + `names`.
+ */
 export class ImdbTitleIndex {
-    // normalized title → entries (multiple titles can normalize the same)
-    private index = new Map<string, IndexEntry[]>();
-    private dataset: ImdbDataset;
+    private db: Database;
+    private selectByNorm: Statement;
+    private selectCast: Statement;
 
-    constructor(dataset: ImdbDataset) {
-        this.dataset = dataset;
-        this.buildIndex();
-    }
-
-    private buildIndex(): void {
-        for (const [tconst, title] of this.dataset.titles) {
-            const entry: IndexEntry = {
-                tconst,
-                title,
-                normalizedPrimary: normalizeTitle(title.primaryTitle),
-                normalizedOriginal: normalizeTitle(title.originalTitle),
-            };
-
-            // Index by both primary and original title
-            for (const norm of [entry.normalizedPrimary, entry.normalizedOriginal]) {
-                if (!norm) continue;
-                const existing = this.index.get(norm);
-                if (existing) {
-                    existing.push(entry);
-                } else {
-                    this.index.set(norm, [entry]);
-                }
-            }
-        }
+    constructor(db: Database) {
+        this.db = db;
+        this.selectByNorm = db.prepare(`
+            SELECT t.tconst, t.titleType, t.primaryTitle, t.originalTitle,
+                   t.startYear, t.endYear, t.runtimeMinutes, t.genres,
+                   r.averageRating, r.numVotes
+            FROM title_index ti
+            JOIN titles t ON t.tconst = ti.tconst
+            LEFT JOIN ratings r ON r.tconst = t.tconst
+            WHERE ti.norm_title = ?
+        `);
+        this.selectCast = db.prepare(`
+            SELECT n.primaryName
+            FROM principals p
+            JOIN names n ON n.nconst = p.nconst
+            WHERE p.tconst = ?
+            ORDER BY p.ordering
+            LIMIT 5
+        `);
     }
 
     /**
@@ -399,29 +409,31 @@ export class ImdbTitleIndex {
      * Returns the best match or null. When provided, `description` is used as
      * a fallback source of candidate titles if title-based matching fails.
      */
-    match(videoTitle: string, preferredYear?: string | null, description?: string | null): MatchResult | null {
+    match(
+        videoTitle: string,
+        preferredYear?: string | null,
+        description?: string | null,
+    ): MatchResult | null {
         const { candidates, year } = extractTitleCandidates(videoTitle);
         const effectiveYear = preferredYear ?? year;
 
         const titleMatch = this.matchCandidates(candidates, effectiveYear, 'normalized');
         if (titleMatch) return titleMatch;
 
-        // Fuzzy fallback on the primary title candidate
+        // Fuzzy fallback: drop trailing words off the primary candidate.
         if (candidates.length > 0) {
             const words = normalizeTitle(candidates[0]).split(' ');
             for (let len = words.length - 1; len >= 2; len--) {
                 const prefix = words.slice(0, len).join(' ');
-                const entries = this.index.get(prefix);
-                if (entries && entries.length > 0) {
-                    const best = this.pickBest(entries, effectiveYear);
-                    if (best) {
-                        return this.buildResult(best, 'fuzzy');
-                    }
+                const rows = this.lookupNormalized(prefix);
+                if (rows.length > 0) {
+                    const best = this.pickBest(rows, effectiveYear);
+                    if (best) return this.buildResult(best, 'fuzzy');
                 }
             }
         }
 
-        // Description fallback: extract titles from the video description
+        // Description fallback.
         if (description) {
             const descCandidates = extractTitleCandidatesFromDescription(description);
             if (descCandidates.length > 0) {
@@ -433,6 +445,10 @@ export class ImdbTitleIndex {
         return null;
     }
 
+    private lookupNormalized(norm: string): MatchedTitle[] {
+        return this.selectByNorm.all(norm) as MatchedTitle[];
+    }
+
     private matchCandidates(
         candidates: string[],
         effectiveYear: string | null,
@@ -442,64 +458,50 @@ export class ImdbTitleIndex {
             const normalized = normalizeTitle(candidate);
             if (!normalized) continue;
 
-            const entries = this.index.get(normalized);
-            if (entries && entries.length > 0) {
-                const best = this.pickBest(entries, effectiveYear);
-                if (best) {
-                    return this.buildResult(best, confidence);
-                }
-            }
+            const rows = this.lookupNormalized(normalized);
+            if (rows.length === 0) continue;
+
+            const best = this.pickBest(rows, effectiveYear);
+            if (best) return this.buildResult(best, confidence);
         }
         return null;
     }
 
-    private pickBest(entries: IndexEntry[], year: string | null): IndexEntry | null {
-        if (entries.length === 1) return entries[0];
+    private pickBest(rows: MatchedTitle[], year: string | null): MatchedTitle | null {
+        if (rows.length === 0) return null;
+        if (rows.length === 1) return rows[0];
 
-        // Prefer year match
         if (year) {
-            const yearMatches = entries.filter(e => e.title.startYear === year);
+            const yearMatches = rows.filter(r => r.startYear === year);
             if (yearMatches.length === 1) return yearMatches[0];
-            if (yearMatches.length > 1) {
-                // Among year matches, prefer movie over series
-                return this.preferMovieType(yearMatches);
-            }
+            if (yearMatches.length > 1) return this.preferMovieType(yearMatches);
         }
 
-        // Prefer movie type, then higher vote count
-        return this.preferMovieType(entries);
+        return this.preferMovieType(rows);
     }
 
-    private preferMovieType(entries: IndexEntry[]): IndexEntry {
-        const movies = entries.filter(e => e.title.titleType === 'movie');
-        const pool = movies.length > 0 ? movies : entries;
+    private preferMovieType(rows: MatchedTitle[]): MatchedTitle {
+        const movies = rows.filter(r => r.titleType === 'movie');
+        const pool = movies.length > 0 ? movies : rows;
 
-        // Pick the one with the most votes (most likely the "real" one)
         let best = pool[0];
-        let bestVotes = 0;
-
-        for (const entry of pool) {
-            const rating = this.dataset.ratings.get(entry.tconst);
-            const votes = rating ? parseInt(rating.numVotes, 10) : 0;
+        let bestVotes = best.numVotes ?? 0;
+        for (const row of pool) {
+            const votes = row.numVotes ?? 0;
             if (votes > bestVotes) {
                 bestVotes = votes;
-                best = entry;
+                best = row;
             }
         }
-
         return best;
     }
 
-    private buildResult(entry: IndexEntry, confidence: MatchResult['confidence']): MatchResult {
-        const rating = this.dataset.ratings.get(entry.tconst);
-        const castNconsts = this.dataset.cast.get(entry.tconst) || [];
-        const castNames = resolveNames(castNconsts, this.dataset.names);
-
+    private buildResult(title: MatchedTitle, confidence: MatchResult['confidence']): MatchResult {
+        const castRows = this.selectCast.all(title.tconst) as { primaryName: string }[];
         return {
-            tconst: entry.tconst,
-            title: entry.title,
-            rating,
-            castNames,
+            tconst: title.tconst,
+            title,
+            castNames: castRows.map(r => r.primaryName),
             confidence,
         };
     }
@@ -509,15 +511,16 @@ export class ImdbTitleIndex {
  * Convert a MatchResult into the ImdbData shape stored on Video objects.
  */
 export function matchToImdbData(match: MatchResult): ImdbData {
+    const t = match.title;
     return {
         tconst: match.tconst,
-        primaryTitle: match.title.primaryTitle,
-        titleType: match.title.titleType,
-        startYear: isImdbNull(match.title.startYear) ? '' : match.title.startYear,
-        runtimeMinutes: isImdbNull(match.title.runtimeMinutes) ? '' : match.title.runtimeMinutes,
-        genres: isImdbNull(match.title.genres) ? '' : match.title.genres,
-        averageRating: match.rating?.averageRating ?? '',
-        numVotes: match.rating?.numVotes ?? '',
+        primaryTitle: t.primaryTitle,
+        titleType: t.titleType,
+        startYear: t.startYear ?? '',
+        runtimeMinutes: t.runtimeMinutes ?? '',
+        genres: t.genres ?? '',
+        averageRating: t.averageRating != null ? String(t.averageRating) : '',
+        numVotes: t.numVotes != null ? String(t.numVotes) : '',
         cast: match.castNames,
     };
 }
