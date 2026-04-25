@@ -1262,6 +1262,24 @@ body {
     color: #f5c518;
 }
 
+.hover-preview-body .hover-imdb-link {
+    background: #f5c518;
+    color: #111;
+    font-weight: 700;
+    text-decoration: none;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+    transition: background 120ms ease, transform 120ms ease;
+}
+
+.hover-preview-body .hover-imdb-link:hover {
+    background: #ffd633;
+    transform: translateY(-1px);
+}
+
 .hover-preview-body .hover-imdb-votes {
     color: rgba(245, 197, 24, 0.75);
     font-weight: 400;

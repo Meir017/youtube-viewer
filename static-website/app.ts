@@ -992,6 +992,7 @@ function buildHoverPreviewHtml(video) {
     let imdbHtml = '';
     if (video.imdb) {
         const b = [];
+        if (video.imdb.tconst) b.push(`<a class="hover-imdb-link" href="https://www.imdb.com/title/${encodeURIComponent(video.imdb.tconst)}/" target="_blank" rel="noopener noreferrer" title="View on IMDb">IMDb ↗</a>`);
         if (video.imdb.averageRating) b.push(`<span class="hover-imdb-rating">⭐ ${escapeHtml(video.imdb.averageRating)}/10${video.imdb.numVotes ? ` <span class="hover-imdb-votes">(${Number(video.imdb.numVotes).toLocaleString()} votes)</span>` : ''}</span>`);
         if (video.imdb.startYear && video.imdb.startYear !== '\\N') b.push(`<span>${escapeHtml(video.imdb.startYear)}</span>`);
         if (video.imdb.runtimeMinutes && video.imdb.runtimeMinutes !== '\\N') b.push(`<span>${escapeHtml(video.imdb.runtimeMinutes)} min</span>`);

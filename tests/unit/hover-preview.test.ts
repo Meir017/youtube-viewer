@@ -64,6 +64,14 @@ for (const [name, src] of [['live', LIVE], ['static', STATIC]] as const) {
             expect(src).toMatch(/duration[^}]*thumbnail/s);
         });
 
+        test('renders an IMDb link to imdb.com/title/<tconst>/ in the popup', () => {
+            expect(src).toContain('hover-imdb-link');
+            expect(src).toContain('https://www.imdb.com/title/');
+            expect(src).toContain('video.imdb.tconst');
+            expect(src).toContain('target="_blank"');
+            expect(src).toContain('rel="noopener noreferrer"');
+        });
+
         test('anchors the panel to the card via getBoundingClientRect + inline styles', () => {
             expect(src).toContain('getBoundingClientRect');
             expect(src).toMatch(/transformOrigin/);
