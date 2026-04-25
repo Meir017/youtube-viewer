@@ -59,7 +59,7 @@ const NULL_MARKER = '\\N';
  * stdout showing rows scanned, rate, and elapsed time. The label should be
  * a short human-readable description (e.g. "📥 title.basics").
  */
-async function processGzipTsv(
+export async function processGzipTsv(
     filePath: string,
     onRow: (cols: string[]) => void,
     progressLabel?: string,
