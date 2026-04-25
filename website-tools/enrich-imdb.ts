@@ -2,30 +2,33 @@
 /**
  * IMDB enrichment tool for the website database
  *
- * Matches YouTube video titles against IMDB datasets and writes
- * structured metadata (rating, genres, cast, year, runtime) onto
- * Video objects in channels.json.
+ * Matches YouTube video titles against the local IMDB SQLite database
+ * (built by `tools:import-imdb`) and writes structured metadata
+ * (rating, genres, cast, year, runtime) onto Video objects in
+ * channels.json.
  *
  * Usage:
  *   bun run website-tools/enrich-imdb.ts [options]
  *
  * Options:
  *   --collection=<id>   Only enrich a specific collection (default: all)
- *   --imdb-dir=<dir>    Path to IMDB dataset files (default: data/imdb)
+ *   --imdb-dir=<dir>    Directory of IMDB .tsv.gz + .sqlite (default: data/imdb)
+ *   --db=<path>         SQLite path override (default: <imdb-dir>/imdb.sqlite)
  *   --min-rating=<n>    Only keep matches with rating >= n (default: 0)
  *   --dry-run           Show matches without writing changes
  *   --force             Re-match videos that already have IMDB data
+ *   --clean             Strip existing imdb fields before matching
+ *   --clean-only        Strip existing imdb fields and exit (no DB read)
  *   --limit=<n>         Max videos to process (default: unlimited)
  *   --help, -h          Show this help message
  *
- * Requires IMDB datasets downloaded via:
- *   bun run tools:download-imdb -- --datasets=title.basics,title.ratings,name.basics,title.principals
+ * Requires the IMDB SQLite DB built via:
+ *   bun run tools:download-imdb && bun run tools:import-imdb
  */
 
 import path from 'path';
-import { existsSync } from 'fs';
-import { loadImdbDatasets, loadCastForTitles, resolveNames } from './imdb-parser';
 import { ImdbTitleIndex, matchToImdbData, type MatchResult } from './imdb-matcher';
+import { openImdbDb, isStale } from './imdb-db';
 import { loadDescriptions, type VideoDescriptions } from '../website/descriptions-store';
 import { createProgress } from './progress';
 import type { Video } from '../generator/types';
@@ -71,13 +74,13 @@ interface ChannelsData {
 interface CliArgs {
     collectionId: string | null;
     imdbDir: string;
+    dbPath: string;
     minRating: number;
     dryRun: boolean;
     force: boolean;
     clean: boolean;
     cleanOnly: boolean;
     limit: number | null;
-    withCast: boolean;
 }
 
 const DATA_FILE = path.join(import.meta.dir, '..', 'website', 'data', 'channels.json');
@@ -86,19 +89,21 @@ function parseArgs(): CliArgs {
     const args = process.argv.slice(2);
     let collectionId: string | null = null;
     let imdbDir = path.join(import.meta.dir, '..', 'data', 'imdb');
+    let dbPath: string | null = null;
     let minRating = 0;
     let dryRun = false;
     let force = false;
     let clean = false;
     let cleanOnly = false;
     let limit: number | null = null;
-    let withCast = false;
 
     for (const arg of args) {
         if (arg.startsWith('--collection=')) {
             collectionId = arg.split('=')[1];
         } else if (arg.startsWith('--imdb-dir=')) {
             imdbDir = path.resolve(arg.split('=')[1]);
+        } else if (arg.startsWith('--db=')) {
+            dbPath = path.resolve(arg.split('=')[1]);
         } else if (arg.startsWith('--min-rating=')) {
             minRating = parseFloat(arg.split('=')[1]);
         } else if (arg === '--dry-run') {
@@ -110,48 +115,55 @@ function parseArgs(): CliArgs {
         } else if (arg === '--clean-only') {
             cleanOnly = true;
         } else if (arg === '--with-cast') {
-            withCast = true;
+            // Deprecated: cast is now always available via SQL JOIN.
+            // Accepted as a no-op for back-compat.
+            console.log(`${c.yellow}⚠ --with-cast is deprecated; cast is always loaded from SQLite${c.reset}`);
         } else if (arg.startsWith('--limit=')) {
             limit = parseInt(arg.split('=')[1], 10);
         } else if (arg === '--help' || arg === '-h') {
             console.log(`
 ${c.bold}IMDB Enrichment Tool${c.reset}
 
-${c.dim}Matches YouTube video titles against IMDB datasets and writes
-structured metadata onto Video objects in channels.json.${c.reset}
+${c.dim}Matches YouTube video titles against the local IMDB SQLite DB
+and writes structured metadata onto Video objects in channels.json.${c.reset}
 
 ${c.bold}Usage:${c.reset}
   bun run website-tools/enrich-imdb.ts [options]
 
 ${c.bold}Options:${c.reset}
   --collection=<id>   Only enrich a specific collection (default: all)
-  --imdb-dir=<dir>    Path to IMDB datasets (default: data/imdb)
+  --imdb-dir=<dir>    Directory of IMDB .tsv.gz + .sqlite (default: data/imdb)
+  --db=<path>         SQLite path override (default: <imdb-dir>/imdb.sqlite)
   --min-rating=<n>    Only keep matches with rating >= n (default: 0)
   --dry-run           Show matches without writing changes
   --force             Re-match videos that already have IMDB data (implies --clean)
-  --clean             Strip existing imdb fields on in-scope videos before matching
-                      (so unmatched videos lose stale data)
-  --clean-only        Only strip existing imdb fields, do not match or load IMDB datasets.
-                      Fastest way to wipe enrichment data.
-  --with-cast         Also load cast data (slow — parses 100M+ rows)
+  --clean             Strip existing imdb fields before matching
+  --clean-only        Only strip existing imdb fields, do not load IMDB DB
   --limit=<n>         Max videos to process (default: unlimited)
   --help, -h          Show this help message
 
-${c.bold}Required datasets:${c.reset}
-  Download first with:
-  bun run tools:download-imdb -- --datasets=title.basics,title.ratings,name.basics,title.principals
+${c.bold}Required setup:${c.reset}
+  1. bun run tools:download-imdb
+  2. bun run tools:import-imdb
 `);
             process.exit(0);
         }
     }
 
-    // --force naturally means "redo everything from scratch", which includes
-    // dropping stale imdb data that no longer matches this run.
     if (force) clean = true;
-    // --clean-only is a clean operation by definition.
     if (cleanOnly) clean = true;
 
-    return { collectionId, imdbDir, minRating, dryRun, force, clean, cleanOnly, limit, withCast };
+    return {
+        collectionId,
+        imdbDir,
+        dbPath: dbPath ?? path.join(imdbDir, 'imdb.sqlite'),
+        minRating,
+        dryRun,
+        force,
+        clean,
+        cleanOnly,
+        limit,
+    };
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -170,56 +182,50 @@ function formatDuration(ms: number): string {
 // ── Main ─────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-    const { collectionId, imdbDir, minRating, dryRun, force, clean, cleanOnly, limit, withCast } = parseArgs();
+    const { collectionId, imdbDir, dbPath, minRating, dryRun, force, clean, cleanOnly, limit } = parseArgs();
 
     console.log();
     console.log(`${c.bold}${c.cyan}╔════════════════════════════════════════════════════════╗${c.reset}`);
     console.log(`${c.bold}${c.cyan}║             IMDB Enrichment Tool                       ║${c.reset}`);
     console.log(`${c.bold}${c.cyan}╚════════════════════════════════════════════════════════╝${c.reset}`);
     if (cleanOnly) {
-        console.log(`${c.yellow}   Mode: clean-only (IMDB datasets will not be loaded)${c.reset}`);
+        console.log(`${c.yellow}   Mode: clean-only (IMDB DB will not be opened)${c.reset}`);
     }
     console.log();
 
-    // Datasets, index, and descriptions are only needed for the matching
-    // phase — skip all of that when the user just wants to wipe enrichment.
-    let dataset: Awaited<ReturnType<typeof loadImdbDatasets>> | null = null;
+    // DB + descriptions are only needed for the matching phase.
     let index: ImdbTitleIndex | null = null;
     let descriptions: VideoDescriptions = {};
+    let db: ReturnType<typeof openImdbDb> | null = null;
 
     if (!cleanOnly) {
-        // Validate IMDB datasets exist
-        const requiredFiles = ['title.basics.tsv.gz', 'title.ratings.tsv.gz'];
-        for (const file of requiredFiles) {
-            if (!existsSync(path.join(imdbDir, file))) {
-                console.error(`${c.red}❌ Missing required dataset: ${file}${c.reset}`);
-                console.error(`${c.dim}   Run: bun run tools:download-imdb -- --datasets=title.basics,title.ratings,name.basics,title.principals${c.reset}`);
-                process.exit(1);
-            }
+        // Refuse to run against a stale or missing DB. Import is a separate,
+        // explicit step (`tools:import-imdb`) — auto-importing here would
+        // surprise users with multi-minute work.
+        const staleness = isStale(dbPath, imdbDir);
+        if (staleness.stale) {
+            console.error(`${c.red}❌ IMDB SQLite DB is not usable: ${staleness.reason}${c.reset}`);
+            console.error(`${c.dim}   DB path: ${dbPath}${c.reset}`);
+            console.error(`${c.dim}   Run: bun run tools:import-imdb${c.reset}`);
+            process.exit(1);
         }
 
-        const hasNames = existsSync(path.join(imdbDir, 'name.basics.tsv.gz'));
-        const hasPrincipals = existsSync(path.join(imdbDir, 'title.principals.tsv.gz'));
+        const openStart = Date.now();
+        process.stdout.write(`${c.dim}🗃  Opening IMDB SQLite DB...${c.reset}`);
+        db = openImdbDb(dbPath, { readonly: true });
+        index = new ImdbTitleIndex(db);
+        console.log(` ${c.green}done${c.reset} ${c.dim}(${formatDuration(Date.now() - openStart)})${c.reset}`);
 
-        if (!hasNames || !hasPrincipals) {
-            console.log(`${c.yellow}⚠  Missing optional datasets (name.basics / title.principals) — cast data will be unavailable${c.reset}`);
-        }
-
-        // Load IMDB datasets (fast: basics + ratings only)
-        const loadStart = Date.now();
-        dataset = await loadImdbDatasets(imdbDir);
-        const loadTime = Date.now() - loadStart;
-        console.log(`${c.dim}   Loaded in ${formatDuration(loadTime)}${c.reset}`);
+        // Quick sanity counts so the user sees what they're matching against.
+        const titleCount = (db.query('SELECT COUNT(*) AS n FROM titles').get() as { n: number }).n;
+        const ratingCount = (db.query('SELECT COUNT(*) AS n FROM ratings').get() as { n: number }).n;
+        const indexCount = (db.query('SELECT COUNT(*) AS n FROM title_index').get() as { n: number }).n;
+        console.log(
+            `   ${c.dim}titles=${titleCount.toLocaleString()} ratings=${ratingCount.toLocaleString()} title_index=${indexCount.toLocaleString()}${c.reset}`,
+        );
         console.log();
 
-        // Build title index
-        console.log(`${c.dim}🔍 Building title index...${c.reset}`);
-        const indexStart = Date.now();
-        index = new ImdbTitleIndex(dataset);
-        console.log(`${c.dim}   Index built in ${formatDuration(Date.now() - indexStart)}${c.reset}`);
-        console.log();
-
-        // Load descriptions (used as a fallback signal when title-based matching fails)
+        // Descriptions used as a fallback signal when title-based matching fails.
         console.log(`${c.dim}📂 Loading descriptions store...${c.reset}`);
         descriptions = await loadDescriptions();
         const descCount = Object.keys(descriptions).length;
@@ -239,10 +245,7 @@ async function main(): Promise<void> {
     console.log(`${c.dim}   ${dbSizeMb} MB, ${data.collections.length} collection(s)${c.reset}`);
     console.log();
 
-    // Clean phase: strip existing `imdb` fields from in-scope videos so that
-    // (a) videos that no longer match this run lose stale data, and
-    // (b) the rest of the pipeline treats every eligible video as fresh.
-    // Mutates in memory only; the save at the end is what persists the change.
+    // Clean phase: strip existing `imdb` fields from in-scope videos.
     let cleared = 0;
     if (clean) {
         const cleanProgress = createProgress(`${c.yellow}🧹 Clearing existing IMDB data${c.reset}`);
@@ -265,7 +268,7 @@ async function main(): Promise<void> {
         console.log();
     }
 
-    // Clean-only mode: save the stripped data and exit without touching IMDB.
+    // Clean-only mode: save and exit.
     if (cleanOnly) {
         if (!dryRun && cleared > 0) {
             const saveStart = Date.now();
@@ -287,14 +290,12 @@ async function main(): Promise<void> {
         return;
     }
 
-    // From here on the matching pipeline needs the loaded datasets.
-    if (!dataset || !index) {
-        // This shouldn't happen — defensive check for the type narrower.
-        throw new Error('Internal error: dataset/index not loaded');
+    if (!index) {
+        // Defensive: type narrower.
+        throw new Error('Internal error: index not initialised');
     }
 
-    // Pre-count eligible videos so the progress bar has a meaningful total.
-    // Mirrors the filter logic in the main loop exactly.
+    // Pre-count eligible videos for the progress bar's total.
     let eligibleTotal = 0;
     for (const collection of data.collections) {
         if (collectionId && collection.id !== collectionId) continue;
@@ -314,7 +315,6 @@ async function main(): Promise<void> {
     console.log(`${c.bold}🎯 ${eligibleTotal.toLocaleString()} videos eligible for matching${c.reset}`);
     console.log();
 
-    // Collect videos to process
     let matched = 0;
     let unmatched = 0;
     let skipped = 0;
@@ -324,13 +324,14 @@ async function main(): Promise<void> {
     const channelSummaries: string[] = [];
     const progress = createProgress(`${c.cyan}🔎 Matching${c.reset}`, { total: eligibleTotal });
 
-    // Phase 1: Match titles (fast — only uses basics + ratings)
     interface PendingMatch {
         video: Video;
         match: MatchResult;
     }
     const pendingMatches: PendingMatch[] = [];
 
+    // Match titles. Cast is fetched per-match inside `index.match()` via
+    // a SQL JOIN, so there's no two-phase dance like the old in-memory tool.
     for (const collection of data.collections) {
         if (collectionId && collection.id !== collectionId) continue;
 
@@ -345,7 +346,6 @@ async function main(): Promise<void> {
                 if (video.isShort) continue;
                 if (!video.title) continue;
 
-                // Skip already-enriched unless --force
                 if (video.imdb && !force) {
                     skipped++;
                     continue;
@@ -362,10 +362,8 @@ async function main(): Promise<void> {
                     continue;
                 }
 
-                // Apply min-rating filter
-                if (minRating > 0 && match.rating) {
-                    const rating = parseFloat(match.rating.averageRating);
-                    if (rating < minRating) {
+                if (minRating > 0 && match.title.averageRating != null) {
+                    if (match.title.averageRating < minRating) {
                         filtered++;
                         progress.tick(processed, `${c.green}✓${matched}${c.reset} ${c.red}✗${unmatched}${c.reset}`);
                         continue;
@@ -378,8 +376,8 @@ async function main(): Promise<void> {
                 progress.tick(processed, `${c.green}✓${matched}${c.reset} ${c.red}✗${unmatched}${c.reset}`);
 
                 if (dryRun && channelMatched <= 3) {
-                    const r = match.rating ? `${match.rating.averageRating}/10` : '-';
-                    channelSummaries.push(`     ${c.green}✓${c.reset} ${truncate(video.title, 45)} → ${c.bold}${match.title.primaryTitle}${c.reset} (${match.title.startYear}) ${r} [${match.confidence}]`);
+                    const r = match.title.averageRating != null ? `${match.title.averageRating}/10` : '-';
+                    channelSummaries.push(`     ${c.green}✓${c.reset} ${truncate(video.title, 45)} → ${c.bold}${match.title.primaryTitle}${c.reset} (${match.title.startYear ?? '?'}) ${r} [${match.confidence}]`);
                 }
             }
 
@@ -399,29 +397,14 @@ async function main(): Promise<void> {
 
     progress.done(`${c.cyan}🔎 Matching complete${c.reset} · ${processed.toLocaleString()} videos · ${c.green}✓${matched}${c.reset} ${c.red}✗${unmatched}${c.reset} · ${formatDuration(Date.now() - matchStart)}`);
     console.log();
-    // Flush per-channel summaries after the progress bar so the terminal
-    // doesn't have to fight the \r rewriter mid-run.
     for (const line of channelSummaries) console.log(line);
 
-    // Phase 2: Load cast data for matched titles (optional, slow)
-    if (withCast && pendingMatches.length > 0) {
-        const matchedTconsts = new Set(pendingMatches.map(m => m.match.tconst));
-        const castData = await loadCastForTitles(imdbDir, matchedTconsts);
-        dataset.names = castData.names;
-        dataset.cast = castData.cast;
-    }
-
-    // Phase 3: Write IMDB data onto Video objects
+    // Apply matches
     if (!dryRun && pendingMatches.length > 0) {
         console.log();
         const writeProgress = createProgress(`${c.cyan}✍  Applying matches${c.reset}`, { total: pendingMatches.length });
         let writeCount = 0;
         for (const { video, match } of pendingMatches) {
-            // Re-resolve cast names now that cast data is loaded
-            if (withCast) {
-                const castNconsts = dataset.cast.get(match.tconst) || [];
-                match.castNames = resolveNames(castNconsts, dataset.names);
-            }
             video.imdb = matchToImdbData(match);
             writeCount++;
             writeProgress.tick(writeCount);
@@ -439,6 +422,9 @@ async function main(): Promise<void> {
         const savedSize = Bun.file(DATA_FILE).size;
         console.log(` ${c.green}done${c.reset} ${c.dim}(${(savedSize / (1024 * 1024)).toFixed(1)} MB in ${formatDuration(Date.now() - saveStart)})${c.reset}`);
     }
+
+    // Close DB
+    if (db) db.close();
 
     const totalTime = Date.now() - matchStart;
 
