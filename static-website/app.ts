@@ -39,6 +39,122 @@ let showHighlights = false;
 const HIGHLIGHTS_MAX_AGE_DAYS = 30;
 const HIGHLIGHTS_COUNT = 50;
 
+// ─────────────────────────────────────────────────────────────────
+// UI state cache (localStorage) — persists collection + filters so
+// a refresh restores the same view. Versioned key so we can evolve
+// the schema later without crashing on stale payloads.
+// ─────────────────────────────────────────────────────────────────
+const UI_STATE_STORAGE_KEY = 'youtube-viewer:static-ui-state:v1';
+let uiStateLoaded = false;
+let uiStateSaveTimer: any = null;
+
+function serializeMaybeInfinity(n) {
+    return Number.isFinite(n) ? n : null;
+}
+
+function deserializeMaybeInfinity(v, fallback) {
+    if (v === null || v === undefined) return fallback;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return fallback;
+    return n;
+}
+
+function snapshotUiState() {
+    return {
+        v: 1,
+        collectionId: activeCollectionId,
+        view: showHighlights ? 'highlights' : 'videos',
+        activeChannel,
+        searchQuery,
+        searchQueryShorts,
+        sort: { by: currentSort.by, order: currentSort.order },
+        duration: {
+            min: minDurationMinutes,
+            max: serializeMaybeInfinity(maxDurationMinutes),
+        },
+        age: {
+            minDays: ageMinDays,
+            maxDays: serializeMaybeInfinity(ageMaxDays),
+        },
+    };
+}
+
+function saveUiState() {
+    if (!uiStateLoaded) return;
+    if (uiStateSaveTimer) clearTimeout(uiStateSaveTimer);
+    uiStateSaveTimer = setTimeout(() => {
+        uiStateSaveTimer = null;
+        try {
+            const payload = JSON.stringify(snapshotUiState());
+            window.localStorage.setItem(UI_STATE_STORAGE_KEY, payload);
+        } catch {
+            // Quota / private mode / disabled storage — ignore.
+        }
+    }, 150);
+}
+
+function loadUiState() {
+    let raw: string | null = null;
+    try {
+        raw = window.localStorage.getItem(UI_STATE_STORAGE_KEY);
+    } catch {
+        return null;
+    }
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object' || parsed.v !== 1) return null;
+        return parsed;
+    } catch {
+        return null;
+    }
+}
+
+function applyUiStateScalars(saved) {
+    if (typeof saved.searchQuery === 'string') searchQuery = saved.searchQuery;
+    if (typeof saved.searchQueryShorts === 'string') searchQueryShorts = saved.searchQueryShorts;
+    if (saved.sort && typeof saved.sort.by === 'string' && typeof saved.sort.order === 'string') {
+        currentSort = { by: saved.sort.by, order: saved.sort.order };
+    }
+    if (saved.duration) {
+        const min = Number(saved.duration.min);
+        minDurationMinutes = Number.isFinite(min) && min >= 0 ? min : 0;
+        maxDurationMinutes = deserializeMaybeInfinity(saved.duration.max, Infinity);
+    }
+    if (saved.age) {
+        const min = Number(saved.age.minDays);
+        ageMinDays = Number.isFinite(min) && min >= 0 ? min : 0;
+        ageMaxDays = deserializeMaybeInfinity(saved.age.maxDays, Infinity);
+    }
+    showHighlights = saved.view === 'highlights';
+
+    if (searchBox) (searchBox as HTMLInputElement).value = searchQuery;
+    if (searchBoxShorts) (searchBoxShorts as HTMLInputElement).value = searchQueryShorts;
+    if (minDurationInput) (minDurationInput as HTMLInputElement).value = minDurationMinutes > 0 ? String(minDurationMinutes) : '';
+    if (maxDurationInput) (maxDurationInput as HTMLInputElement).value = Number.isFinite(maxDurationMinutes) ? String(maxDurationMinutes) : '';
+    if (ageFromDaysInput) (ageFromDaysInput as HTMLInputElement).value = ageMinDays > 0 ? String(ageMinDays) : '';
+    if (ageToDaysInput) (ageToDaysInput as HTMLInputElement).value = Number.isFinite(ageMaxDays) ? String(ageMaxDays) : '';
+
+    sortButtons.forEach(btn => {
+        const b = btn as HTMLElement;
+        const isMatch = b.dataset.sort === currentSort.by;
+        b.classList.toggle('active', isMatch);
+        if (isMatch) {
+            b.dataset.order = currentSort.order;
+            const icon = b.querySelector('.sort-icon');
+            if (icon) icon.textContent = currentSort.order === 'asc' ? '▲' : '▼';
+        }
+    });
+
+    agePresetButtons.forEach(b => {
+        const el = b as HTMLElement;
+        const days = Number(el.dataset.days);
+        const matchesPreset = ageMinDays === 0
+            && ((days === 0 && !Number.isFinite(ageMaxDays)) || (days > 0 && ageMaxDays === days));
+        el.classList.toggle('active', matchesPreset);
+    });
+}
+
 // Virtual scroll state
 let videosVirtualScroll = null;
 let shortsVirtualScroll = null;
@@ -328,17 +444,20 @@ function handleSort(btn) {
     
     currentSort = { by: sortBy, order };
     renderVideos();
+    saveUiState();
 }
 
 // Handle search
 function handleSearch(e) {
     searchQuery = e.target.value.toLowerCase().trim();
     renderVideos();
+    saveUiState();
 }
 
 function handleSearchShorts(e) {
     searchQueryShorts = e.target.value.toLowerCase().trim();
     renderShorts();
+    saveUiState();
 }
 
 // Handle duration filter changes (in-memory filtering)
@@ -351,6 +470,7 @@ function handleDurationFilter() {
     
     renderVideos();
     renderShorts();
+    saveUiState();
 }
 
 // Handle age range preset button click
@@ -365,6 +485,7 @@ function handleAgePreset(btn) {
     ageToDaysInput.value = '';
     
     renderVideos();
+    saveUiState();
 }
 
 // Handle custom age range apply
@@ -380,6 +501,7 @@ function handleCustomAgeApply() {
     agePresetButtons.forEach(b => b.classList.remove('active'));
     
     renderVideos();
+    saveUiState();
 }
 
 // Load data from static JSON
@@ -395,12 +517,40 @@ async function loadData() {
             name: c.name,
             channelCount: c.channelCount,
         }));
-        
-        if (collections.length > 0) {
-            await selectCollection(collections[0].id);
+
+        // Restore prior UI state (collection + filters) from localStorage.
+        const saved = loadUiState();
+        if (saved) applyUiStateScalars(saved);
+
+        // Pick the active collection: prefer saved one if it still exists,
+        // otherwise fall back to the first available collection.
+        let chosenId: string | null = null;
+        if (saved && saved.collectionId && collections.some(c => c.id === saved.collectionId)) {
+            chosenId = saved.collectionId;
+        } else if (collections.length > 0) {
+            chosenId = collections[0].id;
+        }
+
+        if (chosenId) {
+            await selectCollection(chosenId);
+            // Validate saved channel index against the loaded channels.
+            if (saved && typeof saved.activeChannel === 'string') {
+                if (saved.activeChannel === 'all') {
+                    activeChannel = 'all';
+                } else {
+                    const idx = parseInt(saved.activeChannel);
+                    activeChannel = Number.isInteger(idx) && idx >= 0 && idx < channels.length
+                        ? saved.activeChannel
+                        : 'all';
+                }
+                renderAll();
+            }
         } else {
             renderAll();
         }
+
+        uiStateLoaded = true;
+        saveUiState();
     } catch (error) {
         showError('Failed to load data. Make sure data/index.json exists.');
         console.error('Load error:', error);
@@ -455,6 +605,7 @@ async function selectCollection(id) {
         renderAll();
     } finally {
         showLoading(false);
+        saveUiState();
     }
 }
 
@@ -543,6 +694,7 @@ function setActiveChannel(channelFilter) {
     
     renderVideos();
     renderShorts();
+    saveUiState();
 }
 
 // Render all components
@@ -741,6 +893,7 @@ function toggleHighlightsView(showHl) {
         tab.classList.toggle('active', tab.dataset.view === (showHl ? 'highlights' : 'videos'));
     });
     renderVideos();
+    saveUiState();
 }
 
 // Reset user-driven filters (search, duration, age range) and their UI inputs.
@@ -977,7 +1130,13 @@ function hideHoverPreview() {
 
 function buildHoverPreviewHtml(video) {
     const title = escapeHtml(video.title || '');
-    const thumb = video.thumbnail ? `<img class="hover-preview-thumb" src="${video.thumbnail}" alt="${title}">` : '';
+    const videoId = escapeHtml(video.videoId || '');
+    const thumbInner = video.thumbnail
+        ? `<img class="hover-preview-thumb" src="${video.thumbnail}" alt="${title}"><span class="hover-preview-play" aria-hidden="true">▶</span>`
+        : `<span class="hover-preview-play" aria-hidden="true">▶</span>`;
+    const thumb = videoId
+        ? `<button type="button" class="hover-preview-thumb-btn" onclick="openVideoModalById('${videoId}')" aria-label="Watch ${title}" title="Watch video">${thumbInner}</button>`
+        : (video.thumbnail ? `<img class="hover-preview-thumb" src="${video.thumbnail}" alt="${title}">` : '');
 
     let dateDisplay = '';
     if (video.publishDate) dateDisplay = `📅 ${escapeHtml(video.publishDate)}`;
