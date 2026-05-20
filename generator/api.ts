@@ -1,5 +1,6 @@
 import { log } from './logger';
 import { browseApiUrl, CLIENT_CONTEXT, ENRICH_DELAY_MS } from './config';
+import { findJsonObjectEnd } from './parsers';
 import type { Video, VideoDetails } from './types';
 
 export async function fetchChannelPage(url: string): Promise<string> {
@@ -71,17 +72,9 @@ export async function fetchVideoDetails(videoId: string): Promise<VideoDetails> 
     }
     
     const startIndex = html.indexOf(match[0]) + match[0].indexOf('{');
-    let braceCount = 0;
-    let endIndex = startIndex;
-    
-    for (let i = startIndex; i < html.length; i++) {
-        if (html[i] === '{') braceCount++;
-        else if (html[i] === '}') braceCount--;
-        
-        if (braceCount === 0) {
-            endIndex = i + 1;
-            break;
-        }
+    const endIndex = findJsonObjectEnd(html, startIndex);
+    if (endIndex < 0) {
+        throw new Error('Could not find balanced end of ytInitialData JSON object');
     }
     
     const json = html.substring(startIndex, endIndex);
