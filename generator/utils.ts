@@ -93,3 +93,82 @@ export function extractVideoFromRenderer(renderer: any): Video {
         isShort: isVideoShort(renderer),
     };
 }
+
+/**
+ * Detect whether a lockupViewModel represents a members-only video.
+ */
+export function isMembersOnlyLockup(lockup: any): boolean {
+    if (!lockup) return false;
+    const meta = lockup?.metadata?.lockupMetadataViewModel;
+    const badges = meta?.badges || meta?.metadata?.contentMetadataViewModel?.badges || [];
+    for (const badge of badges) {
+        const style = badge?.thumbnailBadgeViewModel?.badgeStyle
+            || badge?.badgeViewModel?.style;
+        if (typeof style === 'string' && style.includes('MEMBERS')) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Detect whether a lockupViewModel represents a short.
+ * Shorts in the new format use LOCKUP_CONTENT_TYPE_SHORTS and have no duration overlay.
+ */
+function isLockupShort(lockup: any): boolean {
+    if (!lockup) return false;
+    if (lockup.contentType === 'LOCKUP_CONTENT_TYPE_SHORTS') return true;
+    // Shorts have an aspect ratio-based thumbnail and no duration badge
+    return false;
+}
+
+/**
+ * Extract a Video from the new YouTube lockupViewModel format.
+ * YouTube migrated from `videoRenderer` to `lockupViewModel` for channel video listings.
+ */
+export function extractVideoFromLockupViewModel(lockup: any): Video {
+    const meta = lockup?.metadata?.lockupMetadataViewModel;
+    const title = meta?.title?.content
+        || meta?.title?.runs?.[0]?.text;
+
+    // metadataRows[0].metadataParts is typically [viewCount, publishedTime]
+    const metadataParts = meta?.metadata?.contentMetadataViewModel?.metadataRows?.[0]?.metadataParts || [];
+    let viewCount: string | undefined;
+    let publishedTime: string | undefined;
+    for (const part of metadataParts) {
+        const text: string | undefined = part?.text?.content;
+        if (!text) continue;
+        if (/view/i.test(text)) {
+            viewCount = text;
+        } else if (/ago\b/i.test(text)) {
+            publishedTime = text;
+        }
+    }
+    // Fallback to positional if heuristics didn't match
+    if (!viewCount && metadataParts[0]?.text?.content) viewCount = metadataParts[0].text.content;
+    if (!publishedTime && metadataParts[1]?.text?.content) publishedTime = metadataParts[1].text.content;
+
+    // Duration is in thumbnail overlay badges (e.g. "15:10")
+    let duration: string | undefined;
+    const overlays = lockup?.contentImage?.thumbnailViewModel?.overlays || [];
+    for (const overlay of overlays) {
+        const badges = overlay?.thumbnailBottomOverlayViewModel?.badges || [];
+        for (const badge of badges) {
+            const text: string | undefined = badge?.thumbnailBadgeViewModel?.text;
+            if (text && /^\d{1,2}(:\d{2}){1,2}$/.test(text)) {
+                duration = text;
+                break;
+            }
+        }
+        if (duration) break;
+    }
+
+    return {
+        videoId: lockup?.contentId,
+        title,
+        viewCount,
+        publishedTime,
+        duration,
+        isShort: isLockupShort(lockup),
+    };
+}

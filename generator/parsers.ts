@@ -1,5 +1,5 @@
 import { log } from './logger';
-import { extractVideoFromRenderer, isMembersOnlyVideo } from './utils';
+import { extractVideoFromRenderer, isMembersOnlyVideo, extractVideoFromLockupViewModel, isMembersOnlyLockup } from './utils';
 import type {
     Video,
     Short,
@@ -12,6 +12,37 @@ import type {
     BrowseShortsResult,
 } from './types';
 
+/**
+ * Find the end index (exclusive) of the JSON object that starts at `startIndex`
+ * in `source`. The character at `startIndex` must be `{`.
+ *
+ * Unlike a naive brace counter, this tracks string-literal state so that `{`
+ * and `}` characters inside quoted strings (e.g. inside a video description)
+ * do not throw the depth count off. Returns -1 if no balanced object is found.
+ */
+export function findJsonObjectEnd(source: string, startIndex: number): number {
+    if (source[startIndex] !== '{') return -1;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let i = startIndex; i < source.length; i++) {
+        const ch = source[i];
+        if (escape) { escape = false; continue; }
+        if (inString) {
+            if (ch === '\\') { escape = true; continue; }
+            if (ch === '"') inString = false;
+            continue;
+        }
+        if (ch === '"') { inString = true; continue; }
+        if (ch === '{') depth++;
+        else if (ch === '}') {
+            depth--;
+            if (depth === 0) return i + 1;
+        }
+    }
+    return -1;
+}
+
 export function extractYtInitialData(html: string): any {
     let match = html.match(/ytInitialData\s*=\s*(\{.+?\});/s);
     
@@ -19,17 +50,9 @@ export function extractYtInitialData(html: string): any {
         log.parse('Using format 1: Direct JSON object (ytInitialData = {...})');
         
         const startIndex = html.indexOf(match[0]) + match[0].indexOf('{');
-        let braceCount = 0;
-        let endIndex = startIndex;
-        
-        for (let i = startIndex; i < html.length; i++) {
-            if (html[i] === '{') braceCount++;
-            else if (html[i] === '}') braceCount--;
-            
-            if (braceCount === 0) {
-                endIndex = i + 1;
-                break;
-            }
+        const endIndex = findJsonObjectEnd(html, startIndex);
+        if (endIndex < 0) {
+            throw new Error('Could not find balanced end of ytInitialData JSON object');
         }
         
         const json = html.substring(startIndex, endIndex);
@@ -99,7 +122,12 @@ export function findVideosTabData(data: any): VideosTabResult {
                     if (renderer && !isMembersOnlyVideo(renderer)) {
                         videos.push(extractVideoFromRenderer(renderer));
                     }
-                    
+
+                    const lockup = item.richItemRenderer?.content?.lockupViewModel;
+                    if (lockup && lockup.contentType === 'LOCKUP_CONTENT_TYPE_VIDEO' && !isMembersOnlyLockup(lockup)) {
+                        videos.push(extractVideoFromLockupViewModel(lockup));
+                    }
+
                     if (item.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token) {
                         continuationToken = item.continuationItemRenderer.continuationEndpoint.continuationCommand.token;
                     }
@@ -263,6 +291,12 @@ export function extractVideosFromBrowseResponse(data: any): BrowseVideosResult {
         
         if (renderer && !isMembersOnlyVideo(renderer)) {
             videos.push(extractVideoFromRenderer(renderer));
+            continue;
+        }
+
+        const lockup = item.richItemRenderer?.content?.lockupViewModel;
+        if (lockup && lockup.contentType === 'LOCKUP_CONTENT_TYPE_VIDEO' && !isMembersOnlyLockup(lockup)) {
+            videos.push(extractVideoFromLockupViewModel(lockup));
         }
     }
     
@@ -291,6 +325,12 @@ export function extractVideosFromInitialData(data: any): Video[] {
             
             if (renderer && !isMembersOnlyVideo(renderer)) {
                 videos.push(extractVideoFromRenderer(renderer));
+                continue;
+            }
+
+            const lockup = item.richItemRenderer?.content?.lockupViewModel;
+            if (lockup && lockup.contentType === 'LOCKUP_CONTENT_TYPE_VIDEO' && !isMembersOnlyLockup(lockup)) {
+                videos.push(extractVideoFromLockupViewModel(lockup));
             }
         }
     }

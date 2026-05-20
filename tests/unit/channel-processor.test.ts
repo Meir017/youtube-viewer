@@ -181,6 +181,187 @@ function createMockBrowseResponse(videos: Array<{
 }
 
 /**
+ * Create mock ytInitialData HTML with videos using the new lockupViewModel format
+ * (YouTube migrated channel video listings from videoRenderer to lockupViewModel).
+ */
+function createMockLockupVideosHtml(videos: Array<{
+    videoId: string;
+    title: string;
+    duration: string;
+    publishedTime: string;
+    views?: string;
+}>, continuationToken?: string): string {
+    const contents = videos.map(v => ({
+        richItemRenderer: {
+            content: {
+                lockupViewModel: {
+                    contentId: v.videoId,
+                    contentType: 'LOCKUP_CONTENT_TYPE_VIDEO',
+                    contentImage: {
+                        thumbnailViewModel: {
+                            overlays: [
+                                {
+                                    thumbnailBottomOverlayViewModel: {
+                                        badges: [
+                                            {
+                                                thumbnailBadgeViewModel: {
+                                                    text: v.duration,
+                                                    badgeStyle: 'THUMBNAIL_OVERLAY_BADGE_STYLE_DEFAULT',
+                                                },
+                                            },
+                                        ],
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                    metadata: {
+                        lockupMetadataViewModel: {
+                            title: { content: v.title },
+                            metadata: {
+                                contentMetadataViewModel: {
+                                    metadataRows: [
+                                        {
+                                            metadataParts: [
+                                                { text: { content: v.views || '1K views' } },
+                                                { text: { content: v.publishedTime } },
+                                            ],
+                                        },
+                                    ],
+                                    delimiter: ' • ',
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }));
+
+    if (continuationToken) {
+        contents.push({
+            continuationItemRenderer: {
+                continuationEndpoint: {
+                    continuationCommand: {
+                        token: continuationToken,
+                    },
+                },
+            },
+        } as any);
+    }
+
+    const data = {
+        metadata: {
+            channelMetadataRenderer: {
+                title: 'Test Channel',
+                description: 'Test description',
+                vanityChannelUrl: 'https://www.youtube.com/@TestChannel',
+                externalId: 'UC123456789',
+                avatar: { thumbnails: [{ url: 'https://yt3.googleusercontent.com/avatar.jpg' }] },
+            },
+        },
+        header: {
+            c4TabbedHeaderRenderer: {
+                subscriberCountText: { simpleText: '10K subscribers' },
+            },
+        },
+        contents: {
+            twoColumnBrowseResultsRenderer: {
+                tabs: [
+                    {
+                        tabRenderer: {
+                            title: 'Videos',
+                            content: {
+                                richGridRenderer: {
+                                    contents,
+                                },
+                            },
+                        },
+                    },
+                ],
+            },
+        },
+    };
+
+    return `<html><script>var ytInitialData = ${JSON.stringify(data)};</script></html>`;
+}
+
+/**
+ * Create mock browse response (pagination) using the lockupViewModel format.
+ */
+function createMockLockupBrowseResponse(videos: Array<{
+    videoId: string;
+    title: string;
+    duration: string;
+    publishedTime: string;
+}>, nextToken?: string): any {
+    const items = videos.map(v => ({
+        richItemRenderer: {
+            content: {
+                lockupViewModel: {
+                    contentId: v.videoId,
+                    contentType: 'LOCKUP_CONTENT_TYPE_VIDEO',
+                    contentImage: {
+                        thumbnailViewModel: {
+                            overlays: [
+                                {
+                                    thumbnailBottomOverlayViewModel: {
+                                        badges: [
+                                            {
+                                                thumbnailBadgeViewModel: {
+                                                    text: v.duration,
+                                                },
+                                            },
+                                        ],
+                                    },
+                                },
+                            ],
+                        },
+                    },
+                    metadata: {
+                        lockupMetadataViewModel: {
+                            title: { content: v.title },
+                            metadata: {
+                                contentMetadataViewModel: {
+                                    metadataRows: [
+                                        {
+                                            metadataParts: [
+                                                { text: { content: '1K views' } },
+                                                { text: { content: v.publishedTime } },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }));
+
+    if (nextToken) {
+        items.push({
+            continuationItemRenderer: {
+                continuationEndpoint: {
+                    continuationCommand: {
+                        token: nextToken,
+                    },
+                },
+            },
+        } as any);
+    }
+
+    return {
+        onResponseReceivedActions: [{
+            appendContinuationItemsAction: {
+                continuationItems: items,
+            },
+        }],
+    };
+}
+
+/**
  * Create a mock YouTube API for testing
  */
 function createTestYouTubeApi(config: {
@@ -243,6 +424,50 @@ describe('Channel Processor', () => {
             await processChannelForWeb('UC123456789', {}, { youtubeApi: api });
 
             expect(api.calls.pages.some(p => p.includes('/channel/UC123456789/about'))).toBe(true);
+        });
+
+        test('parses videos in the new lockupViewModel format', async () => {
+            const videos = [
+                { videoId: 'lock1', title: 'Lockup Video 1', duration: '15:10', publishedTime: '2 days ago', views: '6.9K views' },
+                { videoId: 'lock2', title: 'Lockup Video 2', duration: '1:23:45', publishedTime: '5 days ago', views: '12K views' },
+            ];
+            const api = createTestYouTubeApi({
+                videosPageHtml: createMockLockupVideosHtml(videos),
+            });
+
+            const result = await processChannelForWeb('@TestChannel', { maxAgeDays: 30 }, { youtubeApi: api });
+
+            expect(result.videos).toHaveLength(2);
+            expect(result.videos[0]).toMatchObject({
+                videoId: 'lock1',
+                title: 'Lockup Video 1',
+                duration: '15:10',
+                publishedTime: '2 days ago',
+                viewCount: '6.9K views',
+                isShort: false,
+            });
+            expect(result.videos[1].duration).toBe('1:23:45');
+        });
+
+        test('paginates lockupViewModel videos via browse continuation', async () => {
+            const initialVideos = [
+                { videoId: 'p1', title: 'Page 1 Video', duration: '10:00', publishedTime: '1 day ago' },
+            ];
+            const moreVideos = [
+                { videoId: 'p2', title: 'Page 2 Video', duration: '12:00', publishedTime: '2 days ago' },
+                { videoId: 'p3', title: 'Page 2 Other', duration: '8:00', publishedTime: '3 days ago' },
+            ];
+            const browseResponses = new Map<string, any>();
+            browseResponses.set('NEXT_TOKEN', createMockLockupBrowseResponse(moreVideos));
+
+            const api = createTestYouTubeApi({
+                videosPageHtml: createMockLockupVideosHtml(initialVideos, 'NEXT_TOKEN'),
+                browseResponses,
+            });
+
+            const result = await processChannelForWeb('@TestChannel', { maxAgeDays: 30 }, { youtubeApi: api });
+
+            expect(result.videos.map(v => v.videoId)).toEqual(['p1', 'p2', 'p3']);
         });
     });
 
