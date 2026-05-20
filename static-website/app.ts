@@ -1143,6 +1143,7 @@ function buildHoverPreviewHtml(video) {
     else if (video.publishedTime) dateDisplay = `📅 ${escapeHtml(video.publishedTime)}`;
 
     const metaBits = [];
+    if (videoId) metaBits.push(`<a class="hover-youtube-link" href="https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}" target="_blank" rel="noopener noreferrer" title="Open on YouTube" onclick="event.stopPropagation()">▶ YouTube ↗</a>`);
     if (video.duration) metaBits.push(`<span>⏱ ${escapeHtml(video.duration)}</span>`);
     if (video.viewCount) metaBits.push(`<span>👁️ ${escapeHtml(video.viewCount)}</span>`);
     if (dateDisplay) metaBits.push(`<span>${dateDisplay}</span>`);

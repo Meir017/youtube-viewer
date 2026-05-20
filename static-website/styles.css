@@ -1289,6 +1289,24 @@ body {
     color: rgba(255, 100, 100, 0.9);
 }
 
+.hover-preview-body .hover-youtube-link {
+    background: #ff0000;
+    color: #fff;
+    font-weight: 700;
+    text-decoration: none;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+    transition: background 120ms ease, transform 120ms ease;
+}
+
+.hover-preview-body .hover-youtube-link:hover {
+    background: #ff3333;
+    transform: translateY(-1px);
+}
+
 .hover-preview-thumb-btn {
     position: relative;
     display: block;
