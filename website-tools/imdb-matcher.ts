@@ -231,6 +231,77 @@ function escapeRegex(s: string): string {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// ── Signals for the matcher ─────────────────────────────────────────
+
+/**
+ * Generic "noise" candidates that frequently survive cleanup but are not
+ * actual title names. These often come from clip-style YouTube titles
+ * ("Episode 9 [SPOILERS]" → "spoilers", "The Cast of …" → "the cast"),
+ * and would otherwise collide with obscure low-vote IMDB rows.
+ *
+ * Compared after `normalizeTitle()`.
+ */
+const NOISE_PHRASES = new Set<string>([
+    'the cast', 'spoilers', 'tease', 'recap', 'reunion',
+    'sneak peek', 'first look', 'next on', 'previously on',
+    'season finale', 'premiere', 'bonus clip', 'exclusive clip',
+    'the show', 'cold open', 'cold opens', 'behind the scenes',
+    'official trailer', 'official', 'trailer', 'clip',
+    'spoiler', 'spoilers alert', 'spoiler alert',
+    'reveal', 'revealed', 'announcement',
+]);
+
+/**
+ * Returns true if the normalized candidate text is a known noise phrase
+ * that should not be matched against the IMDB index.
+ */
+export function isNoiseCandidate(normalizedText: string): boolean {
+    return NOISE_PHRASES.has(normalizedText);
+}
+
+const TV_FAMILY_TYPES = new Set<string>([
+    'tvSeries', 'tvMiniSeries', 'tvShort', 'tvSpecial', 'tvEpisode',
+]);
+
+export function isTvFamilyType(titleType: string | null | undefined): boolean {
+    return !!titleType && TV_FAMILY_TYPES.has(titleType);
+}
+
+/**
+ * Detect explicit season/episode tokens in a YouTube video title:
+ *   "Season 4", "Seasons 1 & 2", "S3", "S03E07", "Episode 9", "Ep. 12"
+ *
+ * When true, the matcher restricts candidates to TV-family `titleType`s,
+ * because the video is unambiguously about a series — never a one-off film.
+ */
+export function hasTvSeriesSignal(videoTitle: string): boolean {
+    return /\b(?:seasons?\s+\d+|s\d+e\d+|s\d{1,2}\b|episode\s+\d+|ep\.\s*\d+)\b/i.test(videoTitle);
+}
+
+/**
+ * Extract a normalized set of title-name strings from `#Hashtag` tokens in a
+ * description. PascalCase/CamelCase hashtags are split into space-separated
+ * words first ("BrooklynNineNine" → "brooklyn nine nine"). Noise hashtags
+ * (platform names, generic marketing) are skipped.
+ *
+ * Used as a CONFIRMATION bonus — when an IMDB candidate row's title appears
+ * in this set, it gains a strong score boost.
+ */
+export function extractHashtagSet(desc: string | null | undefined): Set<string> {
+    const out = new Set<string>();
+    if (!desc) return out;
+    const re = /#([A-Za-z][A-Za-z0-9]{2,60})/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(desc)) !== null) {
+        const tag = m[1];
+        if (NOISE_HASHTAGS.has(tag.toLowerCase())) continue;
+        const expanded = splitCamelCase(tag);
+        const norm = normalizeTitle(expanded);
+        if (norm) out.add(norm);
+    }
+    return out;
+}
+
 // Detect a pipe segment that's just a platform/network name (possibly with a
 // leading/trailing "official trailer" etc.) — these aren't useful candidates.
 function isPlatformSegment(seg: string): boolean {
@@ -372,6 +443,28 @@ export interface MatchResult {
 }
 
 /**
+ * Penalty applied to a candidate based on the gap between its IMDB
+ * `startYear` and the YouTube publish year. Trailers/clips are typically
+ * uploaded within a few years of the work's release; a 1962 film matched
+ * to a video uploaded in 2024 should lose to a 2024 same-titled film.
+ *
+ * Returns a non-negative penalty (higher = worse). Returns 0 when there is
+ * no signal (missing or unparsable years), so this never hurts candidates
+ * we cannot evaluate.
+ */
+export function yearDistancePenalty(startYear: string | null | undefined, publishYear: number | null | undefined): number {
+    if (publishYear == null || !startYear) return 0;
+    const y = parseInt(startYear, 10);
+    if (!Number.isFinite(y)) return 0;
+    const diff = publishYear - y;
+    // Video uploaded long AFTER the film: small grace window, then linear.
+    if (diff > 5) return 0.1 * (diff - 5);
+    // Video uploaded BEFORE the film (e.g. teaser years in advance) — small grace.
+    if (diff < -4) return 0.2 * (-diff - 4);
+    return 0;
+}
+
+/**
  * Title matcher backed by a `bun:sqlite` Database produced by `import-imdb`.
  *
  * Replaces the previous in-memory Map-based index. All lookups go through
@@ -407,39 +500,58 @@ export class ImdbTitleIndex {
     /**
      * Match a YouTube video title against the IMDB index.
      * Returns the best match or null. When provided, `description` is used as
-     * a fallback source of candidate titles if title-based matching fails.
+     * a fallback source of candidate titles if title-based matching fails;
+     * any `#Hashtags` it contains also act as a confirmation bonus.
+     * `publishYear` (the YouTube upload year, when known) is used as a soft
+     * tiebreaker so that ancient films don't beat modern same-titled releases.
      */
     match(
         videoTitle: string,
         preferredYear?: string | null,
         description?: string | null,
+        publishYear?: number | null,
     ): MatchResult | null {
-        const { candidates, year } = extractTitleCandidates(videoTitle);
+        const { candidates: titleCandidates, year } = extractTitleCandidates(videoTitle);
         const effectiveYear = preferredYear ?? year;
+        const tvSeriesOnly = hasTvSeriesSignal(videoTitle);
+        const hashtagSet = extractHashtagSet(description);
+        const ctx: MatchContext = {
+            effectiveYear,
+            publishYear: publishYear ?? null,
+            tvSeriesOnly,
+            hashtagSet,
+        };
 
-        const titleMatch = this.matchCandidates(candidates, effectiveYear, 'normalized');
-        if (titleMatch) return titleMatch;
+        // Stage 1: title candidates (with global scoring across all of them).
+        const titleScored: ScoredCandidate[] = titleCandidates.map((text, i) => ({
+            text,
+            source: i === 0 ? 'title-primary' : 'title-other',
+            rank: i,
+        }));
+        const titleHit = this.findBest(titleScored, ctx, 'normalized');
+        if (titleHit) return titleHit;
 
-        // Fuzzy fallback: drop trailing words off the primary candidate.
-        if (candidates.length > 0) {
-            const words = normalizeTitle(candidates[0]).split(' ');
+        // Stage 2: fuzzy fallback — drop trailing words off the primary candidate.
+        if (titleCandidates.length > 0) {
+            const fuzzy: ScoredCandidate[] = [];
+            const words = normalizeTitle(titleCandidates[0]).split(' ');
             for (let len = words.length - 1; len >= 2; len--) {
-                const prefix = words.slice(0, len).join(' ');
-                const rows = this.lookupNormalized(prefix);
-                if (rows.length > 0) {
-                    const best = this.pickBest(rows, effectiveYear);
-                    if (best) return this.buildResult(best, 'fuzzy');
-                }
+                fuzzy.push({
+                    text: words.slice(0, len).join(' '),
+                    source: 'fuzzy',
+                    rank: words.length - len,
+                });
             }
+            const fuzzyHit = this.findBest(fuzzy, ctx, 'fuzzy');
+            if (fuzzyHit) return fuzzyHit;
         }
 
-        // Description fallback.
+        // Stage 3: description fallback.
         if (description) {
-            const descCandidates = extractTitleCandidatesFromDescription(description);
-            if (descCandidates.length > 0) {
-                const descMatch = this.matchCandidates(descCandidates, effectiveYear, 'normalized');
-                if (descMatch) return descMatch;
-            }
+            const descCandidates = extractTitleCandidatesFromDescription(description)
+                .map<ScoredCandidate>((text, i) => ({ text, source: 'description', rank: i }));
+            const descHit = this.findBest(descCandidates, ctx, 'normalized');
+            if (descHit) return descHit;
         }
 
         return null;
@@ -449,51 +561,58 @@ export class ImdbTitleIndex {
         return this.selectByNorm.all(norm) as MatchedTitle[];
     }
 
-    private matchCandidates(
-        candidates: string[],
-        effectiveYear: string | null,
+    /**
+     * Look up every candidate, apply per-candidate-group filters
+     * (year → TV → 0-vote), then score every surviving (candidate, row) tuple
+     * globally and return the best.
+     */
+    private findBest(
+        candidates: ScoredCandidate[],
+        ctx: MatchContext,
         confidence: MatchResult['confidence'],
     ): MatchResult | null {
-        for (const candidate of candidates) {
-            const normalized = normalizeTitle(candidate);
-            if (!normalized) continue;
+        type Tuple = { candidate: ScoredCandidate; row: MatchedTitle };
+        const tuples: Tuple[] = [];
 
-            const rows = this.lookupNormalized(normalized);
+        for (const c of candidates) {
+            const norm = normalizeTitle(c.text);
+            if (!norm || isNoiseCandidate(norm)) continue;
+
+            let rows = this.lookupNormalized(norm);
             if (rows.length === 0) continue;
 
-            const best = this.pickBest(rows, effectiveYear);
-            if (best) return this.buildResult(best, confidence);
+            // Hard year filter (preserves current pickBest semantics, per group).
+            if (ctx.effectiveYear) {
+                const yearRows = rows.filter(r => r.startYear === ctx.effectiveYear);
+                if (yearRows.length > 0) rows = yearRows;
+            }
+
+            // Hard TV-family filter when video title has Season/Episode signal.
+            if (ctx.tvSeriesOnly) {
+                const tvRows = rows.filter(r => isTvFamilyType(r.titleType));
+                if (tvRows.length > 0) rows = tvRows;
+            }
+
+            // Drop 0-vote rows when at least one row in the same group has votes.
+            const anyVotes = rows.some(r => (r.numVotes ?? 0) > 0);
+            if (anyVotes) rows = rows.filter(r => (r.numVotes ?? 0) > 0);
+
+            for (const row of rows) tuples.push({ candidate: c, row });
         }
-        return null;
-    }
 
-    private pickBest(rows: MatchedTitle[], year: string | null): MatchedTitle | null {
-        if (rows.length === 0) return null;
-        if (rows.length === 1) return rows[0];
+        if (tuples.length === 0) return null;
 
-        if (year) {
-            const yearMatches = rows.filter(r => r.startYear === year);
-            if (yearMatches.length === 1) return yearMatches[0];
-            if (yearMatches.length > 1) return this.preferMovieType(yearMatches);
-        }
-
-        return this.preferMovieType(rows);
-    }
-
-    private preferMovieType(rows: MatchedTitle[]): MatchedTitle {
-        const movies = rows.filter(r => r.titleType === 'movie');
-        const pool = movies.length > 0 ? movies : rows;
-
-        let best = pool[0];
-        let bestVotes = best.numVotes ?? 0;
-        for (const row of pool) {
-            const votes = row.numVotes ?? 0;
-            if (votes > bestVotes) {
-                bestVotes = votes;
-                best = row;
+        let best = tuples[0];
+        let bestScore = -Infinity;
+        for (const t of tuples) {
+            const s = scoreTuple(t.row, t.candidate, ctx);
+            if (s > bestScore) {
+                bestScore = s;
+                best = t;
             }
         }
-        return best;
+
+        return this.buildResult(best.row, confidence);
     }
 
     private buildResult(title: MatchedTitle, confidence: MatchResult['confidence']): MatchResult {
@@ -505,6 +624,99 @@ export class ImdbTitleIndex {
             confidence,
         };
     }
+}
+
+// ── Scoring ──────────────────────────────────────────────────────────
+
+interface ScoredCandidate {
+    text: string;
+    source: 'title-primary' | 'title-other' | 'fuzzy' | 'description';
+    /** 0-based position within `source` (0 = best). */
+    rank: number;
+}
+
+interface MatchContext {
+    effectiveYear: string | null;
+    publishYear: number | null;
+    tvSeriesOnly: boolean;
+    hashtagSet: Set<string>;
+}
+
+const SOURCE_QUALITY: Record<ScoredCandidate['source'], number> = {
+    'title-primary': 3,
+    'title-other': 1.5,
+    'description': 0.5,
+    'fuzzy': 0,
+};
+
+/**
+ * Composite ranker for a single (candidate, row) tuple.
+ *
+ *   score = source-quality
+ *         + log10(votes)           (vote popularity, ≈0–7)
+ *         + movie-type bonus       (suppressed when tvSeriesOnly)
+ *         + hashtag-confirmation bonus
+ *         − tv-aware year-distance penalty
+ *
+ * Returns a real number; higher is better.
+ */
+export function scoreTuple(row: MatchedTitle, candidate: ScoredCandidate, ctx: MatchContext): number {
+    let score = SOURCE_QUALITY[candidate.source] - candidate.rank * 0.1;
+
+    const votes = row.numVotes ?? 0;
+    score += votes > 0 ? Math.log10(votes) : 0;
+
+    // Movie-type bonus only when not in TV-signal mode (TV mode hard-filters
+    // upstream, but if no TV rows exist we fall back to all rows — and in
+    // that case a movie should not get a free bonus).
+    if (!ctx.tvSeriesOnly && row.titleType === 'movie') score += 1.5;
+
+    // Hashtag confirmation: the row's title appears in a description hashtag.
+    if (ctx.hashtagSet.size > 0) {
+        const titleNorm = normalizeTitle(row.primaryTitle ?? '');
+        const origNorm = normalizeTitle(row.originalTitle ?? '');
+        if ((titleNorm && ctx.hashtagSet.has(titleNorm))
+            || (origNorm && ctx.hashtagSet.has(origNorm))) {
+            score += 3;
+        }
+    }
+
+    score -= tvAwareYearPenalty(row, ctx.publishYear);
+    return score;
+}
+
+/**
+ * Year-distance penalty that knows the difference between a one-off film and
+ * a long-running TV series. Movies use the original `yearDistancePenalty`
+ * curve; TV-family rows are only penalized when they ended ≥5 years before
+ * the upload year (ongoing or recently-ended series get a free pass — clips
+ * from a 1975 series uploaded in 2026 are normal).
+ */
+export function tvAwareYearPenalty(
+    row: Pick<MatchedTitle, 'titleType' | 'startYear' | 'endYear'>,
+    publishYear: number | null | undefined,
+): number {
+    if (publishYear == null || !row.startYear) return 0;
+    const start = parseInt(row.startYear, 10);
+    if (!Number.isFinite(start)) return 0;
+
+    // Video uploaded BEFORE the work's release: small grace, then linear
+    // (applies to both movies and TV).
+    if (publishYear - start < -4) return 0.2 * (start - publishYear - 4);
+
+    if (isTvFamilyType(row.titleType)) {
+        // Ongoing or unknown end → no penalty.
+        const endRaw = row.endYear;
+        if (!endRaw || endRaw === '\\N') return 0;
+        const end = parseInt(endRaw, 10);
+        if (!Number.isFinite(end)) return 0;
+        // 5-year grace after the show ended (clip channels keep posting).
+        if (publishYear <= end + 5) return 0;
+        return 0.05 * (publishYear - end - 5);
+    }
+
+    // Movies: existing curve.
+    return yearDistancePenalty(row.startYear, publishYear);
 }
 
 /**

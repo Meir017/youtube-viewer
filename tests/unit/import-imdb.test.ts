@@ -21,8 +21,8 @@ describe('import-imdb: runImport', () => {
 
     test('populates titles table with relevant types only', () => {
         const count = (db.query('SELECT COUNT(*) AS n FROM titles').get() as { n: number }).n;
-        // Fixture has 10 relevant titles (5 movies + 4 tvSeries) + filters out tvEpisode + short
-        expect(count).toBe(10);
+        // Fixture has 18 relevant titles (8 movies + 6 tvSeries + others) — tvEpisode + short filtered out
+        expect(count).toBe(18);
 
         const oppenheimer = db
             .query('SELECT * FROM titles WHERE tconst = ?')

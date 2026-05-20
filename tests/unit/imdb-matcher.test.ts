@@ -5,7 +5,13 @@ import { mkdtempSync } from 'fs';
 import {
     extractTitleCandidates,
     extractTitleCandidatesFromDescription,
+    extractHashtagSet,
+    hasTvSeriesSignal,
+    isNoiseCandidate,
+    isTvFamilyType,
     normalizeTitle,
+    yearDistancePenalty,
+    tvAwareYearPenalty,
     ImdbTitleIndex,
 } from '../../website-tools/imdb-matcher';
 import { openImdbDb } from '../../website-tools/imdb-db';
@@ -239,6 +245,240 @@ describe('ImdbTitleIndex (SQLite-backed)', () => {
         expect(result).not.toBeNull();
         expect(result!.castNames).toEqual([]);
     });
+
+    test('publishYear breaks ties toward the modern same-titled film', () => {
+        // Fixture has Beast (1962, 50k votes) and Beast (2024, 5k votes).
+        // Without publishYear the old high-vote film wins; with publishYear=2024
+        // the year-distance penalty must overcome the vote advantage.
+        const noYear = index.match('Beast | Official Trailer');
+        expect(noYear).not.toBeNull();
+        expect(noYear!.tconst).toBe('tt9000001'); // 1962, more votes
+
+        const withYear = index.match('Beast | Official Trailer', null, null, 2024);
+        expect(withYear).not.toBeNull();
+        expect(withYear!.tconst).toBe('tt9000002'); // 2024 wins thanks to recency
+    });
+
+    test('publishYear does not override an explicit year extracted from title', () => {
+        // "(1962)" in the title is an explicit hint and must win over the
+        // upload year, even if that upload year contradicts.
+        const result = index.match('Beast (1962) - 4K Restoration Trailer', null, null, 2024);
+        expect(result).not.toBeNull();
+        expect(result!.tconst).toBe('tt9000001');
+    });
+
+    test('publishYear keeps "popular old film" choice when no modern alternative exists', () => {
+        // Inception has only one row in the fixture (2010). A 2024 upload
+        // must still match it — penalty applies but there's no competitor.
+        const result = index.match('Inception | Official Trailer', null, null, 2024);
+        expect(result).not.toBeNull();
+        expect(result!.tconst).toBe('tt1375666');
+    });
+
+    // ── #2: drop noise-phrase candidates ────────────────────────────
+
+    test('drops a "Tease" noise candidate and recovers the real show via fuzzy', () => {
+        // "The Traitors US | Season 4 Tease | Peacock Original" — the second
+        // pipe segment cleans down to "Tease", which would otherwise match an
+        // obscure low-vote IMDB row. The noise filter must drop it; fuzzy
+        // fallback then truncates "the traitors us" → "the traitors" and hits
+        // tt9100001.
+        const result = index.match('The Traitors US | Season 4 Tease | Peacock Original');
+        expect(result).not.toBeNull();
+        expect(result!.tconst).toBe('tt9100001');
+    });
+
+    test('drops a bracketed [SPOILERS] candidate that would match a 0-vote movie', () => {
+        // tt9100002 ("Spoilers", 0 votes) must NEVER be returned because
+        // "spoilers" is a known noise phrase.
+        const result = index.match('The Traitors | Episode 9 [SPOILERS] | Banished');
+        expect(result).not.toBeNull();
+        expect(result!.tconst).toBe('tt9100001');
+    });
+
+    // ── #5: Season/Episode signal hard-filters to TV-family titles ─
+
+    test('without TV signal, "Echo" matches the high-vote 1985 movie', () => {
+        const result = index.match('Echo | Trailer');
+        expect(result).not.toBeNull();
+        expect(result!.tconst).toBe('tt9100003'); // movie, 100k votes
+    });
+
+    test('with "Season N" TV signal, "Echo" matches the tvSeries despite fewer votes', () => {
+        const result = index.match('Echo | Season 1 | Official Trailer');
+        expect(result).not.toBeNull();
+        expect(result!.tconst).toBe('tt9100004'); // tvSeries, 30k votes
+    });
+
+    test('with "S3" TV signal, an only-movie title still matches (graceful fallback)', () => {
+        // Inception has no tvSeries row in the fixture. The TV-signal hard
+        // filter must NOT silently drop the only available match.
+        const result = index.match('Inception S3 | Trailer');
+        expect(result).not.toBeNull();
+        expect(result!.tconst).toBe('tt1375666');
+    });
+
+    test('with "Episode N" signal, picks tvSeries over equally-titled movie', () => {
+        const result = index.match('Echo | Episode 5 | Recap');
+        expect(result).not.toBeNull();
+        expect(result!.tconst).toBe('tt9100004');
+    });
+
+    // ── #6: Hashtag confirmation bonus ──────────────────────────────
+
+    test('hashtag confirmation tips score toward the confirmed title', () => {
+        // Title contains both "Brooklyn Nine-Nine" (tvSeries, 414k v) and
+        // "Inception" (movie, 2.4M v). Without context the high-vote movie
+        // wins. A #BrooklynNineNine hashtag in description gives B99 a +3
+        // confirmation bonus that flips the result.
+        const noTag = index.match('Brooklyn Nine-Nine | Inception | Clip');
+        expect(noTag!.tconst).toBe('tt1375666');
+
+        const withTag = index.match(
+            'Brooklyn Nine-Nine | Inception | Clip',
+            null,
+            'Behind the scenes!\n#BrooklynNineNine'
+        );
+        expect(withTag!.tconst).toBe('tt2467372');
+    });
+
+    test('noise hashtags do not produce confirmation bonuses', () => {
+        // "#Movies" is in NOISE_HASHTAGS — must not affect scoring.
+        const result = index.match(
+            'Brooklyn Nine-Nine | Inception | Clip',
+            null,
+            'New release!\n#Movies #Trailer'
+        );
+        expect(result!.tconst).toBe('tt1375666');
+    });
+
+    // ── #7: 0-vote rows dropped within candidate group ──────────────
+
+    test('drops a 0-vote duplicate when a voted alternative exists in the same group', () => {
+        // tt9100005 (1000 v) and tt9100006 (no rating row → 0 v) share the
+        // same normalized title "test title". The matcher must return the
+        // voted row; tt9100006 must never surface.
+        const result = index.match('Test Title | Trailer');
+        expect(result).not.toBeNull();
+        expect(result!.tconst).toBe('tt9100005');
+    });
+});
+
+describe('hasTvSeriesSignal', () => {
+    test('detects "Season N"', () => {
+        expect(hasTvSeriesSignal('BEEF: Season 2 | Official Trailer | Netflix')).toBe(true);
+        expect(hasTvSeriesSignal('Cold Opens (Seasons 1 & 2)')).toBe(true);
+    });
+
+    test('detects "Episode N"', () => {
+        expect(hasTvSeriesSignal('Recap | Episode 9')).toBe(true);
+        expect(hasTvSeriesSignal('Ep. 12 | Sneak Peek')).toBe(true);
+    });
+
+    test('detects "S3" / "S03E07"', () => {
+        expect(hasTvSeriesSignal('Tell Me Lies S3 | Official Trailer')).toBe(true);
+        expect(hasTvSeriesSignal('Show S03E07 | Recap')).toBe(true);
+    });
+
+    test('does not flag movie titles or numeric sequels', () => {
+        expect(hasTvSeriesSignal('Scream 7 | Final Trailer (2026 Movie)')).toBe(false);
+        expect(hasTvSeriesSignal('Toy Story 4')).toBe(false);
+        expect(hasTvSeriesSignal('Oppenheimer | New Trailer')).toBe(false);
+    });
+});
+
+describe('isNoiseCandidate', () => {
+    test('rejects known noise phrases', () => {
+        expect(isNoiseCandidate('the cast')).toBe(true);
+        expect(isNoiseCandidate('spoilers')).toBe(true);
+        expect(isNoiseCandidate('tease')).toBe(true);
+        expect(isNoiseCandidate('recap')).toBe(true);
+        expect(isNoiseCandidate('behind the scenes')).toBe(true);
+        expect(isNoiseCandidate('sneak peek')).toBe(true);
+    });
+
+    test('accepts real titles', () => {
+        expect(isNoiseCandidate('the dark knight')).toBe(false);
+        expect(isNoiseCandidate('inception')).toBe(false);
+        expect(isNoiseCandidate('beast')).toBe(false);
+        expect(isNoiseCandidate('up')).toBe(false);
+    });
+});
+
+describe('isTvFamilyType', () => {
+    test('accepts TV-family types', () => {
+        for (const t of ['tvSeries', 'tvMiniSeries', 'tvShort', 'tvSpecial', 'tvEpisode']) {
+            expect(isTvFamilyType(t)).toBe(true);
+        }
+    });
+
+    test('rejects movie / short / null', () => {
+        expect(isTvFamilyType('movie')).toBe(false);
+        expect(isTvFamilyType('short')).toBe(false);
+        expect(isTvFamilyType(null)).toBe(false);
+        expect(isTvFamilyType(undefined)).toBe(false);
+    });
+});
+
+describe('extractHashtagSet', () => {
+    test('extracts and normalizes PascalCase hashtags', () => {
+        const set = extractHashtagSet('Watch now!\n#TellMeLies #BrooklynNineNine');
+        expect(set.has('tell me lies')).toBe(true);
+        expect(set.has('brooklyn nine nine')).toBe(true);
+    });
+
+    test('skips noise hashtags (platforms, generic marketing)', () => {
+        const set = extractHashtagSet('#Peacock #Hulu #Movies #Trailer #Comedy');
+        expect(set.size).toBe(0);
+    });
+
+    test('returns empty set for null/empty', () => {
+        expect(extractHashtagSet(null).size).toBe(0);
+        expect(extractHashtagSet(undefined).size).toBe(0);
+        expect(extractHashtagSet('').size).toBe(0);
+        expect(extractHashtagSet('No hashtags here').size).toBe(0);
+    });
+});
+
+describe('tvAwareYearPenalty', () => {
+    test('zero penalty when publishYear is missing', () => {
+        expect(tvAwareYearPenalty({ titleType: 'movie', startYear: '2010', endYear: null }, null)).toBe(0);
+    });
+
+    test('movie: matches yearDistancePenalty for old films', () => {
+        const row = { titleType: 'movie', startYear: '1962', endYear: null };
+        expect(tvAwareYearPenalty(row, 2024)).toBeCloseTo(yearDistancePenalty('1962', 2024), 5);
+    });
+
+    test('tvSeries with no endYear (ongoing) is never penalized for being old', () => {
+        const ongoing = { titleType: 'tvSeries', startYear: '1975', endYear: null };
+        expect(tvAwareYearPenalty(ongoing, 2026)).toBe(0);
+
+        const ongoingNStr = { titleType: 'tvSeries', startYear: '1975', endYear: '\\N' };
+        expect(tvAwareYearPenalty(ongoingNStr, 2026)).toBe(0);
+    });
+
+    test('tvSeries within 5y grace after endYear is not penalized', () => {
+        const row = { titleType: 'tvSeries', startYear: '2009', endYear: '2015' };
+        // 2026 - 2015 = 11 → > grace of 5
+        expect(tvAwareYearPenalty(row, 2018)).toBe(0); // within grace
+        expect(tvAwareYearPenalty(row, 2020)).toBe(0); // exactly endYear+5
+    });
+
+    test('tvSeries beyond grace gets a small penalty (half the movie rate)', () => {
+        const row = { titleType: 'tvSeries', startYear: '2009', endYear: '2015' };
+        // 2025 - 2015 - 5 = 5 → 0.05 * 5 = 0.25
+        expect(tvAwareYearPenalty(row, 2025)).toBeCloseTo(0.25, 5);
+    });
+
+    test('penalizes pre-release uploads for both movies and TV', () => {
+        // publishYear=2018, startYear=2024 → diff = -6, penalty = 0.2 * (6 - 4) = 0.4
+        const movie = { titleType: 'movie', startYear: '2024', endYear: null };
+        expect(tvAwareYearPenalty(movie, 2018)).toBeCloseTo(0.4, 5);
+
+        const tv = { titleType: 'tvSeries', startYear: '2024', endYear: null };
+        expect(tvAwareYearPenalty(tv, 2018)).toBeCloseTo(0.4, 5);
+    });
 });
 
 describe('extractTitleCandidatesFromDescription', () => {
@@ -272,5 +512,37 @@ describe('extractTitleCandidatesFromDescription', () => {
     test('returns [] for empty or missing description', () => {
         expect(extractTitleCandidatesFromDescription('')).toEqual([]);
         expect(extractTitleCandidatesFromDescription(undefined as unknown as string)).toEqual([]);
+    });
+});
+
+describe('yearDistancePenalty', () => {
+    test('zero penalty when either year is missing', () => {
+        expect(yearDistancePenalty(null, 2024)).toBe(0);
+        expect(yearDistancePenalty('2024', null)).toBe(0);
+        expect(yearDistancePenalty(null, null)).toBe(0);
+        expect(yearDistancePenalty(undefined, 2024)).toBe(0);
+    });
+
+    test('zero penalty inside the grace window', () => {
+        expect(yearDistancePenalty('2024', 2024)).toBe(0);
+        expect(yearDistancePenalty('2020', 2024)).toBe(0); // diff = 4
+        expect(yearDistancePenalty('2019', 2024)).toBe(0); // diff = 5 (boundary)
+        expect(yearDistancePenalty('2026', 2024)).toBe(0); // film a bit newer
+    });
+
+    test('penalises films much older than the upload', () => {
+        // 1962 film vs 2024 upload: diff = 62, penalty = 0.1 * (62 - 5) = 5.7
+        expect(yearDistancePenalty('1962', 2024)).toBeCloseTo(5.7, 5);
+        expect(yearDistancePenalty('2000', 2024)).toBeCloseTo(0.1 * (24 - 5), 5);
+    });
+
+    test('penalises films far in the future of upload', () => {
+        // 2030 film vs 2024 upload: diff = -6, penalty = 0.2 * (6 - 4) = 0.4
+        expect(yearDistancePenalty('2030', 2024)).toBeCloseTo(0.4, 5);
+    });
+
+    test('returns zero for unparseable startYear', () => {
+        expect(yearDistancePenalty('\\N', 2024)).toBe(0);
+        expect(yearDistancePenalty('not-a-year', 2024)).toBe(0);
     });
 });

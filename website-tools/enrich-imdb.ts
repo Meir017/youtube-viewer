@@ -179,6 +179,31 @@ function formatDuration(ms: number): string {
     return `${s}s`;
 }
 
+/**
+ * Derive a "publish year" for a video, used as a soft tiebreaker against the
+ * IMDB title's `startYear`. Prefers an absolute `publishDate` (e.g.
+ * "Feb 2, 2026"); falls back to the relative `publishedTime` (e.g. "5 years
+ * ago", "2 months ago"). Returns null if neither is parseable.
+ */
+export function derivePublishYear(
+    video: Pick<Video, 'publishDate' | 'publishedTime'>,
+    now: Date = new Date(),
+): number | null {
+    if (video.publishDate) {
+        const m = video.publishDate.match(/\b((?:19|20)\d{2})\b/);
+        if (m) return parseInt(m[1], 10);
+    }
+    if (video.publishedTime) {
+        const ago = video.publishedTime.match(/(\d+)\s+year/i);
+        if (ago) return now.getFullYear() - parseInt(ago[1], 10);
+        // Anything in months/weeks/days/hours/minutes is "this year".
+        if (/\b(month|week|day|hour|minute|second)s?\s+ago\b/i.test(video.publishedTime)) {
+            return now.getFullYear();
+        }
+    }
+    return null;
+}
+
 // ── Main ─────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -355,7 +380,12 @@ async function main(): Promise<void> {
                 processed++;
                 channelTotal++;
 
-                const match = index.match(video.title, null, descriptions[video.videoId] ?? null);
+                const match = index.match(
+                    video.title,
+                    null,
+                    descriptions[video.videoId] ?? null,
+                    derivePublishYear(video),
+                );
                 if (!match) {
                     unmatched++;
                     progress.tick(processed, `${c.green}✓${matched}${c.reset} ${c.red}✗${unmatched}${c.reset}`);
@@ -452,7 +482,9 @@ async function main(): Promise<void> {
     console.log(`${c.bold}════════════════════════════════════════════════════════${c.reset}`);
 }
 
-main().catch(err => {
-    console.error(`${c.red}Fatal error:${c.reset}`, err);
-    process.exit(1);
-});
+if (import.meta.main) {
+    main().catch(err => {
+        console.error(`${c.red}Fatal error:${c.reset}`, err);
+        process.exit(1);
+    });
+}
